@@ -1,0 +1,38 @@
+{
+  "name": "promoteops",
+  "version": "0.1.0",
+  "description": "MCP server for CloudFormation / S3 config / binary drift reporting and plan-then-execute promotions",
+  "type": "module",
+  "bin": {
+    "promoteops": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "mcp",
+    "cloudformation",
+    "aws",
+    "promotion"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.1085.0",
+    "@aws-sdk/client-s3": "^3.1085.0",
+    "@aws-sdk/credential-providers": "^3.1081.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "diff": "^9.0.0",
+    "diff2html": "^3.4.56",
+    "js-yaml": "^5.2.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^7.0.2"
+  }
+}

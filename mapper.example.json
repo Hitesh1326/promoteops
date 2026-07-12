@@ -1,0 +1,18 @@
+{
+  "mappings": {
+    "example-template": [
+      {
+        "dev": "example-stack-dev",
+        "test": "example-stack-test",
+        "prod": "example-stack-prod"
+      }
+    ],
+    "example-with-sentinels": [
+      {
+        "dev": "example-new-stack",
+        "test": "NOT_DEPLOYED",
+        "prod": "EXCLUDED"
+      }
+    ]
+  }
+}

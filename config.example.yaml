@@ -1,0 +1,20 @@
+# Copy to config.yaml and fill in real values.
+# config.yaml is gitignored.
+
+aws:
+  region: us-east-1
+  profiles:
+    dev: my-dev-sso-profile
+    test: my-test-sso-profile
+    prod: my-prod-sso-profile
+
+# Absolute or project-relative path to the local CloudFormation templates root
+# used when planning stack promotions (checked-out git working tree).
+templates:
+  localPath: ../path/to/cloudformation-templates
+
+# Paths relative to the promoteops project root
+paths:
+  mapper: ./mapper.json
+  configTempDir: ./tmp/configs
+  reportOutput: ./tmp/report.html
