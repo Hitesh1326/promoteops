@@ -1,0 +1,23 @@
+# Dependencies and build
+node_modules/
+dist/
+
+# Real secrets / local config (use *.example.* instead)
+mapper.json
+config.yaml
+.env
+.env.*
+
+# Config edit workspace
+tmp/**
+
+# Keep the temp directory structure in git
+!tmp/
+!tmp/configs/
+!tmp/configs/.gitkeep
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
