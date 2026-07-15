@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: m2-config-mapper
     content: "M2 — Config + mapper loading: zod schemas; SSO profiles + local template path from config.yaml; brand-new mapper.json with NOT_DEPLOYED/EXCLUDED. Test: fixture load/reject/sentinel/path resolution."
-    status: pending
+    status: completed
   - id: m3-aws-client-factory
     content: "M3 — AWS client factory: per-env CFN/S3 via SSO; clear expired-token message. Test: clients for dev/test/prod; expired SSO surfaces readable re-login error."
     status: pending
@@ -69,6 +69,19 @@ An MCP server, installable via `npx promoteops`, that:
 - **Diffing/rendering:** `diff` (jsdiff) to compute unified diffs, `diff2html` to render GitHub-style HTML in the generated report.
 - **Report output:** a generated `report.html` (grid + click-to-expand diff) written locally and opened in the browser, plus a compact chat-facing summary (counts) and shortlist (outdated/missing only — never all rows by default).
 
+## Code organization principles (living guideline, not a locked contract)
+
+- **Feature-first folders, not layer-first.** Top-level `src/` folders are named after what they do (`config/`, `mapper/`, `shared/`, `tools/`), not after an architectural layer like "domain" or "infra" — a folder name should be understandable without a vocabulary lesson.
+- **No dedicated `types.ts` files.** A type lives in the file that owns/creates it, next to the function that produces it.
+- **Types are not borrowed across responsibilities.** If file A produces a value and file B (a different responsibility — e.g. an orchestrator receiving a parser's output) needs to consume it, B declares its own local type describing only the fields it actually needs, instead of importing A's type. TypeScript's structural typing still catches real mismatches at the exact call site where they matter, so this doesn't sacrifice safety — it just avoids one module dictating another's contract. Local types are left unexported wherever possible, so the rule is enforced by the language (nothing to import) rather than by convention alone.
+  - **Exception — schema ↔ parser pairing:** a zod schema module and its direct parser (`configFileSchema` + `parseConfigFile`, `mapperFileSchema` + `parseMapperFile`) are one job (validate, then hand back typed data), so the parser reuses the schema's inferred type as its own return type.
+  - **Exception — fixed vocabulary:** `ENVIRONMENTS`/`EnvironmentName` (`shared/environment`) is shared everywhere. It's not a business-logic shape owned by one module, it's a fixed fact about the whole app (there are exactly three environments).
+- **No jargon in file/concept names.** Prefer plain names a teammate can understand without a definition — e.g. `specialValues` (not "sentinels"), a plain uniqueness-check function folded into the module that uses it (not a dedicated "invariants" file).
+- **Comments are file/module-purpose level, not line-by-line narration.** At most one comment describing what a file is for; an inline comment only when a specific line's *why* isn't obvious from the code itself (e.g. why a collision here is dangerous). No comments that just restate an architecture rule already covered above.
+- **One subfolder per module (when it has a test).** Feature modules get their own folder holding the source file and its test (`config/loadConfig/loadConfig.ts` + `loadConfig.test.ts`). `shared/` stays flat — small helpers with no tests don't need a folder each. There is no mirrored top-level `tests/` tree.
+- **Orchestrators wrap lower-level errors into one public error type** (`ConfigLoadError`, `MapperLoadError`) so callers only need to catch one thing per pipeline (read file → parse+validate → build normalized objects → orchestrator composes the result).
+- **`tools/`** (M4+) — thin MCP tool handlers. They call into `config/`/`mapper/`/etc., shape the response for the MCP client, and contain no business logic of their own.
+
 ## Architecture
 
 ```mermaid
@@ -101,47 +114,64 @@ flowchart TB
 ```
 promoteops/
   src/
-    server.ts                        # registers tools, starts stdio transport
+    shared/                          # fixed vocabulary + generic helpers (flat — no per-file subfolders)
+      environment.ts                 # ENVIRONMENTS, EnvironmentName
+      fileIO.ts                      # readRequiredFile
+      pathResolver.ts                 # resolveProjectRoot, resolveFromProjectRoot
+      zodError.ts                     # formatZodError
+      primitives.ts                   # nonEmptyString
+
     config/
-      loadConfig.ts                  # config.yaml -> env profiles, local template path
-      loadMapper.ts                  # mapper.json loader + zod schema + sentinel handling
-      schemas.ts                     # zod schemas for config/mapper
-    aws/
-      clientFactory.ts               # per-env CFN/S3 clients via SSO profiles, cached
-    domain/
-      contracts.ts                   # Comparer<T>, PromotionPlanner<T>, PromotionExecutor<T>
-      stacks/
-        StackComparer.ts
-        StackPromotionPlanner.ts
-        StackPromotionExecutor.ts
-      configs/
-        ConfigComparer.ts
-        ConfigPromotionPlanner.ts
-        ConfigPromotionExecutor.ts
-      binaries/
-        BinaryComparer.ts
-        BinaryPromotionExecutor.ts    # copy-only, no separate planner needed beyond compare
-    planStore/
-      contracts.ts                   # PlanRepository interface
-      FilePlanRepository.ts
-    audit/
-      contracts.ts                   # AuditLogger interface
-      LocalFileAuditLogger.ts
-    report/
-      buildHtml.ts                   # diff2html-based report renderer
-      templates/
-    tools/
-      reportStacks.ts
-      reportConfigs.ts
-      reportBinaries.ts
-      diffStack.ts
-      planStackPromotion.ts
-      executeStackPromotion.ts
-      getConfig.ts
-      planConfigPromotion.ts
-      executeConfigPromotion.ts
-      planBinaryPromotion.ts
-      executeBinaryPromotion.ts
+      configFileSchema/               # zod: validates raw config.yaml
+        configFileSchema.ts
+        configFileSchema.test.ts
+      parseConfigFile/                 # read text -> parse YAML -> validate
+        parseConfigFile.ts
+        parseConfigFile.test.ts
+      resolveConfigPaths/              # paths -> absolute ResolvedConfigPaths
+        resolveConfigPaths.ts
+        resolveConfigPaths.test.ts
+      loadConfig/                      # orchestrator: read -> parse -> validate -> resolvedPaths
+        loadConfig.ts
+        loadConfig.test.ts
+
+    mapper/
+      mapperFileSchema/               # zod: validates raw mapper.json
+        mapperFileSchema.ts
+        mapperFileSchema.test.ts
+      parseMapperFile/                 # read text -> parse JSON -> validate
+        parseMapperFile.ts
+        parseMapperFile.test.ts
+      specialValues/                   # NOT_DEPLOYED, EXCLUDED, isDeployableValue
+        specialValues.ts
+        specialValues.test.ts
+      normalizeMapper/                 # build/normalize instances + uniqueness check
+        normalizeMapper.ts
+        normalizeMapper.test.ts
+      loadMapper/                      # orchestrator: read -> parse -> validate -> normalize
+        loadMapper.ts
+        loadMapper.test.ts
+      # M4+: comparer/promotion logic for stacks/configs/binaries land here or in their own feature folders
+
+    # M3+: aws/clientFactory/, planStore/, audit/, report/
+
+    tools/                          # MCP tool handlers — thin, calls config/mapper/etc. (M4+)
+      reportStacks/
+      reportConfigs/
+      reportBinaries/
+      diffStack/
+      planStackPromotion/
+      executeStackPromotion/
+      getConfig/
+      planConfigPromotion/
+      executeConfigPromotion/
+      planBinaryPromotion/
+      executeBinaryPromotion/
+
+    server.ts                        # registers tools, starts stdio transport
+    index.ts                         # bin entrypoint
+
+  # each module folder holds its own *.test.ts; excluded from tsc via tsconfig "exclude"
   tmp/
     configs/                         # config edit workspace; gitignored
   mapper.example.json                # starter shape, ships in repo
@@ -150,6 +180,7 @@ promoteops/
   package.json                        # "bin": { "promoteops": "dist/index.js" }
   README.md
   docs/
+    plan.md                          # this file
     mapper-schema.md
     tools-reference.md
     setup-aws-profiles.md

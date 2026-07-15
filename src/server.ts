@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 /**
  * M1 scaffold: MCP server boots on stdio with a ping tool.
- * Domain tools arrive in later milestones.
+ * Real tools (report/plan/execute) arrive in later milestones.
  */
 export async function startServer(): Promise<void> {
   const server = new McpServer({
