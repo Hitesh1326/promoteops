@@ -8,9 +8,9 @@ todos:
   - id: m2-config-mapper
     content: "M2 — Config + mapper loading: zod schemas; SSO profiles + local template path from config.yaml; brand-new mapper.json with NOT_DEPLOYED/EXCLUDED. Test: fixture load/reject/sentinel/path resolution."
     status: completed
-  - id: m3-aws-client-factory
-    content: "M3 — AWS client factory: per-env CFN/S3 via SSO; clear expired-token message. Test: clients for dev/test/prod; expired SSO surfaces readable re-login error."
-    status: pending
+  - id: m3-aws-clients
+    content: "M3 — AWS clients: per-env CFN/S3 via SSO profiles; clear expired-token / re-login message. Test: clients for dev/test/prod; expired SSO surfaces readable re-login error."
+    status: completed
   - id: m4-stack-report
     content: "M4 — Stack compare + report: StackComparer (normalize/hash/timestamp), report_stacks, diff_stack, HTML + shortlist. Comparisons: live test vs dev, prod vs test. Test: small real mapper slice; no AWS writes."
     status: pending
@@ -77,7 +77,7 @@ An MCP server, installable via `npx promoteops`, that:
   - **Exception — schema ↔ parser pairing:** a zod schema module and its direct parser (`configFileSchema` + `parseConfigFile`, `mapperFileSchema` + `parseMapperFile`) are one job (validate, then hand back typed data), so the parser reuses the schema's inferred type as its own return type.
   - **Exception — fixed vocabulary:** `ENVIRONMENTS`/`EnvironmentName` (`shared/environment`) is shared everywhere. It's not a business-logic shape owned by one module, it's a fixed fact about the whole app (there are exactly three environments).
 - **No jargon in file/concept names.** Prefer plain names a teammate can understand without a definition — e.g. `specialValues` (not "sentinels"), a plain uniqueness-check function folded into the module that uses it (not a dedicated "invariants" file).
-- **Comments are file/module-purpose level, not line-by-line narration.** At most one comment describing what a file is for; an inline comment only when a specific line's *why* isn't obvious from the code itself (e.g. why a collision here is dangerous). No comments that just restate an architecture rule already covered above.
+- **Comments: class/file-level only by default.** Put a short comment at the top of a file (or on a class) explaining what that module/class is for. Do **not** add inline comments that narrate obvious code, restate architecture rules, or explain things the name already says. Inline comments are allowed only when a specific line's *why* is non-obvious (e.g. why a collision here is dangerous, or why we cache).
 - **One subfolder per module (when it has a test).** Feature modules get their own folder holding the source file and its test (`config/loadConfig/loadConfig.ts` + `loadConfig.test.ts`). `shared/` stays flat — small helpers with no tests don't need a folder each. There is no mirrored top-level `tests/` tree.
 - **Orchestrators wrap lower-level errors into one public error type** (`ConfigLoadError`, `MapperLoadError`) so callers only need to catch one thing per pipeline (read file → parse+validate → build normalized objects → orchestrator composes the result).
 - **`tools/`** (M4+) — thin MCP tool handlers. They call into `config/`/`mapper/`/etc., shape the response for the MCP client, and contain no business logic of their own.
@@ -101,11 +101,11 @@ flowchart TB
     Tools --> Audit
     Tools --> Report
 
-    Domain --> AWSFactory[AWS client factory - per-env SSO profiles]
+    Domain --> AwsClients[AWS clients - per-env SSO profiles]
     Domain --> LocalTemplates[Local template path from config]
     Domain --> ConfigTemp[Project tmp/configs gitignored]
 
-    AWSFactory --> AWS[("CloudFormation / S3")]
+    AwsClients --> AWS[("CloudFormation / S3")]
     Report --> HTML[report.html]
 ```
 
@@ -153,7 +153,11 @@ promoteops/
         loadMapper.test.ts
       # M4+: comparer/promotion logic for stacks/configs/binaries land here or in their own feature folders
 
-    # M3+: aws/clientFactory/, planStore/, audit/, report/
+    aws/
+      clients/                         # per-env CFN + S3 clients via SSO profiles
+        clients.ts
+        clients.test.ts
+    # M4+: planStore/, audit/, report/
 
     tools/                          # MCP tool handlers — thin, calls config/mapper/etc. (M4+)
       reportStacks/
@@ -216,9 +220,9 @@ Each milestone must pass its test gate before starting the next.
 **Ship:** Load `config.yaml` (SSO profiles, local template path) + brand-new `mapper.json` with zod; sentinel handling.
 **Test:** Fixtures for valid load, reject bad files, resolve `NOT_DEPLOYED`/`EXCLUDED`, resolve local template path from config.
 
-### M3 — AWS client factory
-**Ship:** Cached per-env CFN/S3 clients via SSO; clear expired-token messaging.
-**Test:** Clients resolve for `dev`/`test`/`prod`; expired SSO produces a readable re-login message.
+### M3 — AWS clients
+**Ship:** Cached per-env CFN/S3 clients via SSO profiles from config (`src/aws/clients/`); clear expired-token / re-login messaging.
+**Test:** Clients resolve for `dev`/`test`/`prod`; expired SSO produces a readable re-login message (`aws sso login --profile …`).
 
 ### M4 — Stack compare + report (read-only)
 **Ship:** `StackComparer`, `report_stacks`, `diff_stack`, HTML report (`diff2html`), chat summary + outdated/missing shortlist.
