@@ -46,15 +46,13 @@ describe("formatAwsAuthError / isSsoExpiredError", () => {
 });
 
 describe("getAwsClients", () => {
-  it("creates CloudFormation and S3 clients for each environment profile", async () => {
+  it("creates CloudFormation clients for each environment profile", async () => {
     const createCredentials = vi.fn((profile: string) => {
       const provider = vi.fn(async () => ({ accessKeyId: "ak", secretAccessKey: "sk", profile }));
       return provider;
     });
     const createCloudFormationClient = vi.fn(({ region }) => ({ kind: "cfn", region }) as never);
-    const createS3Client = vi.fn(({ region }) => ({ kind: "s3", region }) as never);
-
-    const hooks = { createCredentials, createCloudFormationClient, createS3Client };
+    const hooks = { createCredentials, createCloudFormationClient };
 
     const dev = await getAwsClients("dev", aws, hooks);
     const test = await getAwsClients("test", aws, hooks);
@@ -64,7 +62,6 @@ describe("getAwsClients", () => {
     expect(test.profile).toBe("test-profile");
     expect(prod.profile).toBe("prod-profile");
     expect(dev.cloudFormation).toEqual({ kind: "cfn", region: "us-east-1" });
-    expect(dev.s3).toEqual({ kind: "s3", region: "us-east-1" });
     expect(createCredentials).toHaveBeenCalledWith("dev-profile");
     expect(createCredentials).toHaveBeenCalledWith("test-profile");
     expect(createCredentials).toHaveBeenCalledWith("prod-profile");
@@ -73,15 +70,13 @@ describe("getAwsClients", () => {
   it("caches clients for the same environment/profile/region", async () => {
     const createCredentials = vi.fn(() => vi.fn(async () => ({ accessKeyId: "ak", secretAccessKey: "sk" })));
     const createCloudFormationClient = vi.fn(() => ({ kind: "cfn" }) as never);
-    const createS3Client = vi.fn(() => ({ kind: "s3" }) as never);
-    const hooks = { createCredentials, createCloudFormationClient, createS3Client };
+    const hooks = { createCredentials, createCloudFormationClient };
 
     const first = await getAwsClients("dev", aws, hooks);
     const second = await getAwsClients("dev", aws, hooks);
 
     expect(second).toBe(first);
     expect(createCloudFormationClient).toHaveBeenCalledTimes(1);
-    expect(createS3Client).toHaveBeenCalledTimes(1);
   });
 
   it("throws AwsClientError with a re-login message when SSO credentials are expired", async () => {

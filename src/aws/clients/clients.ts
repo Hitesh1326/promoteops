@@ -1,17 +1,15 @@
 /**
- * Per-environment CloudFormation + S3 clients using SSO profiles from config.
+ * Per-environment CloudFormation clients using SSO profiles from config.
  * Clients are cached in-memory for the process lifetime so report/plan tools
  * reuse the same SDK client objects instead of recreating them every call.
  */
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
-import { S3Client } from "@aws-sdk/client-s3";
 import { fromIni } from "@aws-sdk/credential-providers";
 
 import type { EnvironmentName } from "../../shared/environment.js";
 
 export interface EnvAwsClients {
   cloudFormation: CloudFormationClient;
-  s3: S3Client;
   profile: string;
   region: string;
   environment: EnvironmentName;
@@ -35,10 +33,6 @@ export interface AwsClientHooks {
     region: string;
     credentials: () => Promise<unknown>;
   }) => CloudFormationClient;
-  createS3Client?: (input: {
-    region: string;
-    credentials: () => Promise<unknown>;
-  }) => S3Client;
 }
 
 const cache = new Map<string, EnvAwsClients>();
@@ -72,17 +66,8 @@ export async function getAwsClients(
         region: input.region,
         credentials: input.credentials as never,
       }));
-  const createS3Client =
-    hooks.createS3Client ??
-    ((input) =>
-      new S3Client({
-        region: input.region,
-        credentials: input.credentials as never,
-      }));
-
   const clients: EnvAwsClients = {
     cloudFormation: createCloudFormationClient({ region: aws.region, credentials }),
-    s3: createS3Client({ region: aws.region, credentials }),
     profile,
     region: aws.region,
     environment,

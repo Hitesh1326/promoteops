@@ -1,262 +1,415 @@
 ---
 name: PromoteOps MCP Server
-overview: Build PromoteOps, a TypeScript MCP server (no React/.NET) that reports drift across dev/test/prod for CloudFormation stacks, S3 config files, and S3 binaries, and performs promotions only through an explicit plan-then-execute flow gated by human confirmation. Delivery is split into M1–M10 testable milestones.
+overview: "Open-source TypeScript MCP server for CloudFormation stack drift reporting and plan-then-execute promotions across dev/test/prod. Inspired by an internal StackMate app, but stacks-only (no S3 config/binary). Delivery is M1–M8 with fixture-first report UX."
 todos:
   - id: m1-scaffold
-    content: "M1 — Project scaffold: package.json bin, tsconfig, deps, .gitignore (mapper/config + tmp/), examples, empty tmp/configs/. Test: npm install + tsc; process starts cleanly."
+    content: "M1 — Project scaffold: package.json bin, tsconfig, deps, .gitignore, examples. Test: npm install + tsc; process starts cleanly."
     status: completed
   - id: m2-config-mapper
-    content: "M2 — Config + mapper loading: zod schemas; SSO profiles + local template path from config.yaml; brand-new mapper.json with NOT_DEPLOYED/EXCLUDED. Test: fixture load/reject/sentinel/path resolution."
+    content: "M2 — Config + mapper loading: zod schemas; SSO profiles + local template path; mapper.json with NOT_DEPLOYED/EXCLUDED. Test: fixture load/reject/special values/path resolution."
     status: completed
   - id: m3-aws-clients
-    content: "M3 — AWS clients: per-env CFN/S3 via SSO profiles; clear expired-token / re-login message. Test: clients for dev/test/prod; expired SSO surfaces readable re-login error."
+    content: "M3 — AWS CloudFormation clients per env via SSO; clear expired-token / re-login message. Test: clients for dev/test/prod; expired SSO surfaces readable re-login error. (S3 clients not required for OSS scope — remove if still present.)"
     status: completed
-  - id: m4-stack-report
-    content: "M4 — Stack compare + report: StackComparer (normalize/hash/timestamp), report_stacks, diff_stack, HTML + shortlist. Comparisons: live test vs dev, prod vs test. Test: small real mapper slice; no AWS writes."
-    status: pending
-  - id: m5-config-binary-report
-    content: "M5 — Config + binary compare + report: report_configs, report_binaries, timestamp status, HTML + shortlist. Test: same as M4 for configs/binaries; zero mutations."
+  - id: m4-report-fixture
+    content: "M4 — Report UX with fixtures per locked Report UX spec: per-env statuses, unmapped section, self-contained HTML+CSS, shortlist, filters, report_stacks/diff_stack fixture mode. Test: see M4 acceptance criteria in plan body."
+    status: completed
+  - id: m5-live-compare
+    content: "M5 — Live stack compare: fetch CFN templates; normalize+hash; timestamps; fill same report model; unmapped detection. Test: small real mapper slice; no AWS writes."
     status: pending
   - id: m6-plan-store-audit
     content: "M6 — Plan store + audit: FilePlanRepository (~/.promoteops/plans/), LocalFileAuditLogger JSONL, staleness fields. Test: save/load/mark-executed + audit append without AWS."
     status: pending
   - id: m7-stack-promotion
-    content: "M7 — Stack promotion: plan_stack_promotion (local template from config path, param review, finalize PlanRecord) + execute_stack_promotion (elicit, staleness, CreateChangeSet+ExecuteChangeSet, audit). Test: plan read-only; execute gated; stale plan rejected."
+    content: "M7 — Stack promotion: plan_stack_promotion (local template, param review, PlanRecord) + execute_stack_promotion (elicit, staleness, CreateChangeSet+ExecuteChangeSet, audit). Test: plan read-only; execute gated; stale plan rejected."
     status: pending
-  - id: m8-config-promotion
-    content: "M8 — Config promotion: get_config → project tmp/configs/ (gitignored) → plan_config_promotion → execute PutObject + elicit + audit. Test: download/edit/plan/execute loop with confirmation."
-    status: pending
-  - id: m9-binary-promotion
-    content: "M9 — Binary promotion: plan_binary_promotion + execute_binary_promotion (CopyObject test→prod only). Test: plan read-only; execute gated copy + audit."
-    status: pending
-  - id: m10-docs-e2e
-    content: "M10 — Docs + E2E smoke: README + mapper/tools/AWS/safety docs; full happy path in real MCP client. Test: report → plan → execute for one stack and one config with elicitation."
+  - id: m8-docs-e2e
+    content: "M8 — Docs + E2E smoke: README + mapper/tools/AWS/safety docs; report → plan → execute for one stack with elicitation in Cursor or VS Code Copilot. Test: fresh setup happy path."
     status: pending
 isProject: false
 ---
 
 # PromoteOps MCP Server — Implementation Plan
 
-## Project location
-Greenfield at `/Users/hitesh/projects/promoteops` (directory exists, currently empty).
+Living document. Prefer evolving this over treating any earlier draft as locked.
+
+## Origin and scope
+
+PromoteOps is inspired by an internal tool (**StackMate**: .NET API + React UI) used at work to show CloudFormation template deployment status across **dev / test / prod**.
+
+**What we take from StackMate (behavior, not a UI clone):**
+- A **mapper file** listing which stack names belong to which template instance in each env
+- Mapper special values **`NOT_DEPLOYED`** and **`EXCLUDED`**
+- Per-environment status: deployed vs not, excluded, outdated vs current
+- Comparison pairs: **test vs dev**, **prod vs test**
+- **Unmapped stacks**: live AWS stacks whose names are not in the mapper (visibility only)
+- Diff of live template bodies between environments
+
+**What we deliberately leave out of this open-source product:**
+- S3 config-file grids
+- S3 binary copy / deploy flows
+- Any MCP tools or milestones for configs/binaries
+
+**What PromoteOps adds beyond StackMate:**
+- Runs as an **MCP server** (Cursor, VS Code Copilot Agent, etc.) — not a hosted React/.NET app
+- Strict **plan → execute** promotion for stacks (StackMate’s stack dashboard was read-only)
+- Human confirmation via MCP elicitation before any AWS write
+- Distribution via git / `npm pack` tarball (public npm only when the product is solid)
 
 ## Goal
-An MCP server, installable via `npx promoteops`, that:
-1. Reports which CloudFormation stacks / S3 config files / S3 binaries are out of sync between **test vs dev** and **prod vs test**, rendered as a browsable HTML report (GitHub-style diffs) plus a short chat-friendly summary.
-2. Lets the user promote an outdated item through a strict **plan → execute** flow with no AWS mutation during planning, and native MCP elicitation (or token fallback) before any write.
-3. Never lets an agent chain "diff" and "apply" into a single call.
 
-## Core design decisions (finalized in discussion)
+An MCP server (bin `promoteops`) that:
 
-- **Language:** TypeScript, MCP SDK (`@modelcontextprotocol/sdk`) + AWS SDK v3.
-- **No React, no .NET** anywhere in this project.
-- **Mapper file** (`mapper.json`) is brand-new and populated incrementally as we go. Shape: `{ mappings: { [templateName]: [{ dev, test, prod }, ...] } }`, with sentinel values `NOT_DEPLOYED` (missing, not yet deployed) and `EXCLUDED` (intentionally skip that env for that instance). Templates absent from the mapper are out of scope — no auto-discovery in v1.
-- **Instance identification:** each array entry (instance) is identified by its **dev stack name** (falling back to test, then prod, when dev itself is `NOT_DEPLOYED`) — no numeric indices in tool calls.
-- **Env comparison pairs (reports and drift status):** live templates compared **test vs dev** and **prod vs test**. Same pairs for configs/binaries where applicable.
-- **Stack comparison:** `GetTemplate` + normalize (parse YAML/JSON to canonical form) + SHA-256 hash for equality, plus `DescribeStacks` timestamp (`LastUpdatedTime`) to show which side is newer. Parameters are excluded from stack status/diffing (each env intentionally has different values).
-- **Config comparison:** S3 `HeadObject`/`GetObject` — timestamp-only for report status (no hashing); all configs are JSON, so on-demand diff is a structural key-level diff.
-- **Binary comparison:** S3 timestamp-only comparison test vs prod.
-- **Binary promotion:** copy-only (`CopyObject` test→prod). No pipeline trigger call — the S3-drop-triggered deployment already exists on the AWS side.
-- **Plan/execute split (hard rule):** every mutating action is two separate tool calls. Plan tools are 100% read-only (no `CreateChangeSet` during planning — moved to execute time, right before `ExecuteChangeSet`, so no idle change sets are left in AWS if the user changes their mind).
-- **Parameters:** plan step returns the full list of **current live parameter values** (from `DescribeStacks`) for user re-verification (no silent carry-forward), plus any **new parameters** not present on the current stack (template `Default:` shown only as a hint, never auto-applied). User supplies overrides/new values via a second `plan_*` call before finalizing; execute always sends explicit resolved values (no `UsePreviousValue` ambiguity).
-- **Template source for promotion:** local git working tree file; **local template path comes from `config.yaml` / env config** (not the mapper), so promotion always reflects whatever branch the user currently has checked out.
-- **Report vs promotion:** reports answer “are envs out of sync?” using live env pairs above; promotion pushes content from the configured local template path into the target env.
-- **Config edit loop:** `get_config` writes into a **project-local** directory (e.g. `tmp/configs/`) that is **gitignored**; plan/execute use that edited file.
-- **Local plan storage:** `PlanRepository` interface with a `FilePlanRepository` v1 implementation (JSON files under `~/.promoteops/plans/`), swappable later. Plans store a `planId`, target, resolved payload, and a `targetCurrentTemplateHash` snapshot for staleness detection at execute time (abort + ask to replan if target changed since planning).
-- **Confirmation mechanism:** MCP elicitation (`ctx.elicit`) as the primary human-approval gate before any execute call (confirmed broadly supported, including Copilot).
-- **AWS credentials:** SSO-based named profiles, one per env (`dev`, `test`, `prod`), configured in `config.yaml`; credential provider must handle SSO token expiry with a clear re-login message.
-- **Audit logging:** `AuditLogger` interface; v1 = local JSONL file per install (`~/.promoteops/audit.log`); v2 (future, not in this pass) = S3-backed shared log. Each team runs their own instance with their own mapper/config/audit log — no shared state assumed.
-- **Diffing/rendering:** `diff` (jsdiff) to compute unified diffs, `diff2html` to render GitHub-style HTML in the generated report.
-- **Report output:** a generated `report.html` (grid + click-to-expand diff) written locally and opened in the browser, plus a compact chat-facing summary (counts) and shortlist (outdated/missing only — never all rows by default).
+1. Reports CloudFormation stack drift across **dev / test / prod** as a browsable **HTML report** plus a short chat summary and attention shortlist.
+2. Lets the user promote an outdated stack through **plan → execute**, with no AWS mutation during planning.
+3. Never combines “diff/plan” and “apply” in a single tool call.
 
-## Code organization principles (living guideline, not a locked contract)
+## Project location
 
-- **Feature-first folders, not layer-first.** Top-level `src/` folders are named after what they do (`config/`, `mapper/`, `shared/`, `tools/`), not after an architectural layer like "domain" or "infra" — a folder name should be understandable without a vocabulary lesson.
-- **No dedicated `types.ts` files.** A type lives in the file that owns/creates it, next to the function that produces it.
-- **Types are not borrowed across responsibilities.** If file A produces a value and file B (a different responsibility — e.g. an orchestrator receiving a parser's output) needs to consume it, B declares its own local type describing only the fields it actually needs, instead of importing A's type. TypeScript's structural typing still catches real mismatches at the exact call site where they matter, so this doesn't sacrifice safety — it just avoids one module dictating another's contract. Local types are left unexported wherever possible, so the rule is enforced by the language (nothing to import) rather than by convention alone.
-  - **Exception — schema ↔ parser pairing:** a zod schema module and its direct parser (`configFileSchema` + `parseConfigFile`, `mapperFileSchema` + `parseMapperFile`) are one job (validate, then hand back typed data), so the parser reuses the schema's inferred type as its own return type.
-  - **Exception — fixed vocabulary:** `ENVIRONMENTS`/`EnvironmentName` (`shared/environment`) is shared everywhere. It's not a business-logic shape owned by one module, it's a fixed fact about the whole app (there are exactly three environments).
-- **No jargon in file/concept names.** Prefer plain names a teammate can understand without a definition — e.g. `specialValues` (not "sentinels"), a plain uniqueness-check function folded into the module that uses it (not a dedicated "invariants" file).
-- **Comments: class/file-level only by default.** Put a short comment at the top of a file (or on a class) explaining what that module/class is for. Do **not** add inline comments that narrate obvious code, restate architecture rules, or explain things the name already says. Inline comments are allowed only when a specific line's *why* is non-obvious (e.g. why a collision here is dangerous, or why we cache).
-- **One subfolder per module (when it has a test).** Feature modules get their own folder holding the source file and its test (`config/loadConfig/loadConfig.ts` + `loadConfig.test.ts`). `shared/` stays flat — small helpers with no tests don't need a folder each. There is no mirrored top-level `tests/` tree.
-- **Orchestrators wrap lower-level errors into one public error type** (`ConfigLoadError`, `MapperLoadError`) so callers only need to catch one thing per pipeline (read file → parse+validate → build normalized objects → orchestrator composes the result).
-- **`tools/`** (M4+) — thin MCP tool handlers. They call into `config/`/`mapper/`/etc., shape the response for the MCP client, and contain no business logic of their own.
+`/Users/hitesh/projects/promoteops`
+
+## Core design decisions
+
+### Product
+
+- **Language:** TypeScript, MCP SDK, AWS SDK v3 (CloudFormation).
+- **No React, no .NET** in this repo.
+- **Stacks only** for v1 OSS.
+- **Mapper** (`mapper.json`): `{ mappings: { [templateName]: [{ dev, test, prod }, ...] } }`. Templates absent from the mapper are out of scope for mapped rows; their live stacks may still appear under **unmapped**.
+- **Instance id:** deployable stack name (prefer dev, else test, else prod) — no numeric indices in tool calls.
+- **Env pairs:** compare **test ← dev** and **prod ← test** (higher env checked against lower).
+- **Template source for promotion:** local git working tree; path from `config.yaml` (`templates.localPath`).
+- **Plan / execute split:** plan tools are read-only; change sets created only at execute time (with elicitation).
+- **Parameters:** plan returns current live parameters + new parameters from the local template; execute sends explicit values (no silent `UsePreviousValue`).
+- **Plan storage:** `~/.promoteops/plans/` JSON; staleness via target template hash snapshot.
+- **Audit:** local JSONL under `~/.promoteops/`.
+- **Credentials:** SSO named profiles per env in `config.yaml`; expired session → clear `aws sso login --profile …` message.
+- **Private distribution for work testing:** `npm pack` → Slack → `npm install -g ./promoteops-x.y.z.tgz` (easy to reinstall with a bumped version). Public npm later.
+
+### Status model (per environment on a mapped instance)
+
+Aligned with StackMate’s flags, with clearer naming for the report:
+
+| Status | Meaning |
+|---|---|
+| `excluded` | Mapper value is `EXCLUDED` for that env |
+| `not_deployed` | Mapper value is `NOT_DEPLOYED`, **or** mapper has a stack name but that stack is not found in AWS |
+| `current` | Deployed and content matches the lower env (see drift rule) |
+| `outdated` | Deployed and content differs from the lower env |
+
+Dev has no “lower” env: it is never `outdated` from a pair comparison (it is the source side for test).
+
+**Unmapped (separate from row status):** stack name exists in AWS for an env but is not referenced as a real stack name in the mapper for that env. Shown for visibility; not a promote target by default.
+
+**Do not use** a report status called `missing` — that confused mapper `NOT_DEPLOYED` with “absent from mapper.”
+
+### Drift rule (hash + timestamp)
+
+Both are used; each has one job:
+
+1. **Normalize** live template body → **SHA-256** → content equality.
+2. **Timestamps** (`LastUpdatedTime` / create time) → which side is **newer** (display + `newerSide`).
+3. For a higher env (test or prod), when both sides are deployable stacks:
+   - hashes **equal** → `current` (even if clocks differ)
+   - hashes **differ** → `outdated`, set `newerSide` from timestamps
+4. Attention **shortlist** = mapped rows that are `outdated` or `not_deployed` (exclude `excluded` from “needs action” unless we later decide otherwise).
+
+Normalization should reduce false drift from formatting/whitespace (JSON pretty-print / canonical form). Prefer hashing normalized content so pure formatting noise does not mark `outdated`.
+
+### Code organization
+
+- **Feature-first folders** (`config/`, `mapper/`, `stacks/`, `report/`, `aws/`, `tools/`, `shared/`).
+- **One subfolder per module that has tests** (source + `*.test.ts` together). `shared/` stays flat.
+- **No dedicated `types.ts` dumps.** A type lives with the module that owns it. Consumers declare their own local shapes when crossing responsibilities (schema↔parser pairing and `ENVIRONMENTS` are the agreed exceptions).
+- **Comments:** short **file/class-level** purpose comments only. Inline comments only when a line’s *why* is non-obvious.
+- **Plain names** (e.g. `clients`, `specialValues`, `buildReport`) — avoid jargon like “factory”, “sentinel”, “invariant” as folder names.
+- **Report assets:** HTML markup and **CSS in separate files** under `report/` (not one giant inline HTML string forever).
+- **Orchestrators** wrap lower errors into one public error type per pipeline (`ConfigLoadError`, `MapperLoadError`, `AwsClientError`, …).
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    Client["MCP Client (Cursor / Copilot)"] <--> Server[MCP Server process]
+    Client["MCP Client Cursor / Copilot"] <--> Server[MCP Server process]
 
-    subgraph Server[" "]
-        Tools[Tool handlers - thin, zod-validated]
-        Domain[Domain services - Comparer / PromotionPlanner / PromotionExecutor]
-        PlanStore[FilePlanRepository - JSON files]
-        Audit[LocalFileAuditLogger - JSONL]
-        Report[Report builder - diff2html]
+    subgraph ServerProcess["PromoteOps"]
+        Tools[Tool handlers thin]
+        Compare[Stack compare]
+        Report[Report HTML + shortlist]
+        PlanStore[Plan files]
+        Audit[Audit JSONL]
     end
 
-    Tools --> Domain
+    Tools --> Compare
+    Tools --> Report
     Tools --> PlanStore
     Tools --> Audit
-    Tools --> Report
-
-    Domain --> AwsClients[AWS clients - per-env SSO profiles]
-    Domain --> LocalTemplates[Local template path from config]
-    Domain --> ConfigTemp[Project tmp/configs gitignored]
-
-    AwsClients --> AWS[("CloudFormation / S3")]
+    Compare --> AwsClients[CFN clients per env SSO]
+    Compare --> Mapper[mapper.json]
     Report --> HTML[report.html]
+    AwsClients --> AWS[("CloudFormation")]
 ```
 
-## Directory structure
+## Directory structure (target)
 
 ```
 promoteops/
   src/
-    shared/                          # fixed vocabulary + generic helpers (flat — no per-file subfolders)
-      environment.ts                 # ENVIRONMENTS, EnvironmentName
-      fileIO.ts                      # readRequiredFile
-      pathResolver.ts                 # resolveProjectRoot, resolveFromProjectRoot
-      zodError.ts                     # formatZodError
-      primitives.ts                   # nonEmptyString
+    shared/
+      environment.ts
+      fileIO.ts
+      pathResolver.ts
+      zodError.ts
+      primitives.ts
 
     config/
-      configFileSchema/               # zod: validates raw config.yaml
-        configFileSchema.ts
-        configFileSchema.test.ts
-      parseConfigFile/                 # read text -> parse YAML -> validate
-        parseConfigFile.ts
-        parseConfigFile.test.ts
-      resolveConfigPaths/              # paths -> absolute ResolvedConfigPaths
-        resolveConfigPaths.ts
-        resolveConfigPaths.test.ts
-      loadConfig/                      # orchestrator: read -> parse -> validate -> resolvedPaths
-        loadConfig.ts
-        loadConfig.test.ts
+      configFileSchema/
+      parseConfigFile/
+      resolveConfigPaths/
+      loadConfig/
 
     mapper/
-      mapperFileSchema/               # zod: validates raw mapper.json
-        mapperFileSchema.ts
-        mapperFileSchema.test.ts
-      parseMapperFile/                 # read text -> parse JSON -> validate
-        parseMapperFile.ts
-        parseMapperFile.test.ts
-      specialValues/                   # NOT_DEPLOYED, EXCLUDED, isDeployableValue
-        specialValues.ts
-        specialValues.test.ts
-      normalizeMapper/                 # build/normalize instances + uniqueness check
-        normalizeMapper.ts
-        normalizeMapper.test.ts
-      loadMapper/                      # orchestrator: read -> parse -> validate -> normalize
-        loadMapper.ts
-        loadMapper.test.ts
-      # M4+: comparer/promotion logic for stacks/configs/binaries land here or in their own feature folders
+      mapperFileSchema/
+      parseMapperFile/
+      specialValues/          # NOT_DEPLOYED, EXCLUDED
+      normalizeMapper/
+      loadMapper/
 
     aws/
-      clients/                         # per-env CFN + S3 clients via SSO profiles
-        clients.ts
-        clients.test.ts
-    # M4+: planStore/, audit/, report/
+      clients/                 # CloudFormation clients per env (SSO)
 
-    tools/                          # MCP tool handlers — thin, calls config/mapper/etc. (M4+)
+    stacks/
+      stackComparison/         # result shapes, shortlist helpers
+      compareStacks/           # M5: live fetch + normalize + hash + unmapped
+
+    report/
+      buildReport/             # write report + chat summary
+      html/                    # markup builders
+      css/                     # report.css (and related)
+
+    fake/                      # temporary M4 fixture data + report:fixture CLI — delete after M5
+      fixtureReport.ts
+      writeFixtureReport.ts
+
+    planStore/                 # M6
+    audit/                     # M6
+
+    tools/
       reportStacks/
-      reportConfigs/
-      reportBinaries/
       diffStack/
-      planStackPromotion/
-      executeStackPromotion/
-      getConfig/
-      planConfigPromotion/
-      executeConfigPromotion/
-      planBinaryPromotion/
-      executeBinaryPromotion/
+      planStackPromotion/      # M7
+      executeStackPromotion/   # M7
 
-    server.ts                        # registers tools, starts stdio transport
-    index.ts                         # bin entrypoint
+    scripts/
+      copyReportAssets.ts
 
-  # each module folder holds its own *.test.ts; excluded from tsc via tsconfig "exclude"
-  tmp/
-    configs/                         # config edit workspace; gitignored
-  mapper.example.json                # starter shape, ships in repo
-  config.example.yaml                # SSO profiles + local template path
-  .gitignore                          # excludes real mapper.json/config.yaml and tmp/
-  package.json                        # "bin": { "promoteops": "dist/index.js" }
+    server.ts
+    index.ts
+
+  tmp/                         # report output etc.; gitignored
+  mapper.example.json
+  config.example.yaml
+  docs/plan.md
+  package.json
   README.md
-  docs/
-    plan.md                          # this file
-    mapper-schema.md
-    tools-reference.md
-    setup-aws-profiles.md
-    safety-model.md
-  LICENSE
 ```
 
-## Tool contract summary
+## Tool contract (OSS)
 
 | Tool | Type | Behavior |
 |---|---|---|
-| `report_stacks()` | read-only | Compare all mapper stack entries (test vs dev, prod vs test); hash + timestamp; writes `report.html`, returns summary + outdated/missing shortlist |
-| `report_configs()` | read-only | Same pattern for S3 configs, timestamp-only |
-| `report_binaries()` | read-only | Same pattern for S3 binaries, timestamp-only |
-| `diff_stack(devStackName, fromEnv, toEnv)` | read-only | Full GitHub-style template diff for one instance |
-| `plan_stack_promotion(devStackName, targetEnv, paramOverrides?)` | read-only | Uses local template from config path; returns template diff + `currentParameters` + `newParameters`; on second call with `paramOverrides`, finalizes and saves a local `PlanRecord` |
-| `execute_stack_promotion(planId)` | **mutating** | Elicit confirmation; staleness check against `targetCurrentTemplateHash`; `CreateChangeSet` + `ExecuteChangeSet` (created and consumed together); mark plan executed; audit log |
-| `get_config(name, env)` | read-only | Downloads config to project `tmp/configs/` for review/edit |
-| `plan_config_promotion(name, targetEnv)` | read-only | Diffs edited local temp file vs live target JSON object |
-| `execute_config_promotion(planId)` | **mutating** | Elicit confirmation; `PutObject`; audit log |
-| `plan_binary_promotion(name)` | read-only | Compares test/prod object timestamp |
-| `execute_binary_promotion(planId)` | **mutating** | Elicit confirmation; `CopyObject` test→prod only; audit log |
+| `report_stacks` | read-only | Compare mapped stacks; write HTML; return summary + shortlist + unmapped counts. Fixture mode until M5. |
+| `diff_stack(instanceId, fromEnv, toEnv)` | read-only | Template diff for one instance/pair. |
+| `plan_stack_promotion(instanceId, targetEnv, paramOverrides?)` | read-only | Local template vs target; params review; finalize `PlanRecord` on confirm path. |
+| `execute_stack_promotion(planId)` | **mutating** | Elicit; staleness check; CreateChangeSet + ExecuteChangeSet; mark plan executed; audit. |
 
-## Milestones (testable gates)
+No config/binary tools in this product.
 
-Each milestone must pass its test gate before starting the next.
+## Milestones
 
-### M1 — Project scaffold
-**Ship:** `package.json` with `bin`, TypeScript config, MCP/AWS/zod/diff deps, `.gitignore` (real mapper/config + `tmp/`), `mapper.example.json`, `config.example.yaml`, empty `tmp/configs/`.
-**Test:** `npm install` + `tsc` succeed; process starts and exits cleanly on stdio.
+Each milestone must pass its test gate before the next.
 
-### M2 — Config + mapper loading
-**Ship:** Load `config.yaml` (SSO profiles, local template path) + brand-new `mapper.json` with zod; sentinel handling.
-**Test:** Fixtures for valid load, reject bad files, resolve `NOT_DEPLOYED`/`EXCLUDED`, resolve local template path from config.
+### M1 — Project scaffold — completed
+**Ship:** package bin, TypeScript, deps, gitignore, examples.
+**Test:** install + `tsc`; process starts on stdio.
 
-### M3 — AWS clients
-**Ship:** Cached per-env CFN/S3 clients via SSO profiles from config (`src/aws/clients/`); clear expired-token / re-login messaging.
-**Test:** Clients resolve for `dev`/`test`/`prod`; expired SSO produces a readable re-login message (`aws sso login --profile …`).
+### M2 — Config + mapper loading — completed
+**Ship:** `config.yaml` + `mapper.json` load/validate; `NOT_DEPLOYED` / `EXCLUDED`.
+**Test:** fixtures for valid/invalid load, special values, path resolution.
 
-### M4 — Stack compare + report (read-only)
-**Ship:** `StackComparer`, `report_stacks`, `diff_stack`, HTML report (`diff2html`), chat summary + outdated/missing shortlist.
-**Comparisons:** live **test vs dev**, **prod vs test**.
-**Test:** Run against a small real mapper slice; HTML opens; shortlist only drift/missing; no AWS writes.
+### M3 — AWS clients — completed
+**Ship:** Cached per-env CloudFormation clients via SSO; re-login errors.
+**Test:** resolve for dev/test/prod; expired SSO message.
+**Follow-up completed in M4:** removed unused S3 client wiring (OSS remains stacks-only).
 
-### M5 — Config + binary compare + report (read-only)
-**Ship:** Config/binary comparers + `report_configs` / `report_binaries` + HTML/shortlist.
-**Test:** Same as M4 for configs/binaries; still zero mutations.
+### M4 — Report UX with fixtures — completed
+**Ship:** Implement the locked **Report UX** section below against fixture data (no AWS):
+- Per-env statuses: `current` / `outdated` / `not_deployed` / `excluded` (+ `unavailable` only for collection failure)
+- Single unmapped-stacks table at the end (fixture data)
+- Separate `report/html` + `report/css` sources; generated output is one self-contained `report.html`
+- Chat summary + attention shortlist per contract (shortlist is a chat-only construct; the HTML surfaces attention via row ordering, not a duplicate section)
+- MCP `report_stacks` / `diff_stack` in fixture mode
+- `npm run report:fixture` → configured report path (default `tmp/report.html`)
 
-### M6 — Plan store + audit log
-**Ship:** `FilePlanRepository` (`~/.promoteops/plans/`), `LocalFileAuditLogger` (JSONL); save/load/mark-executed; staleness fields on plan records.
-**Test:** Round-trip a fake plan; mark executed; append audit line; no AWS required.
+**Test / acceptance (fixture must demonstrate all of these):**
+- One mapped instance → exactly one main-matrix row (Dev/Test/Prod cells)
+- Only approved mapped status labels appear; no `missing` / `in_sync` / `skipped`
+- Matrix rows sorted attention-first (`not_deployed` → target-newer `outdated` → other `outdated` → rest); target-newer warning per Report UX
+- Chat shortlist = actionable `outdated` + `not_deployed` only, sorted and capped
+- Unmapped fixture stacks in one table with an environment column; empty matrix/unmapped states are clear
+- Filtering/search + `Needs action only` toggle, empty state + “showing X of Y”; matrix still readable with JS disabled
+- No partial-data banner in HTML; fixture does not simulate expired SSO as a mid-report status
+- Both Dev→Test and Test→Prod outdated diffs present as **View diff** drawers titled with promotion direction; diffs are always embedded (no size deferral); beige light theme; opening a drawer does not scroll the page or leave a selected-row highlight
+- No external network requests; copying only `report.html` preserves appearance and interaction
+- Special characters in names cannot break markup; drawer works without JS and is keyboard-closable; print styles do not hide findings
+- Packed/global install can locate source CSS and write the report outside the package directory
+- No AWS calls
 
-### M7 — Stack promotion (plan → execute)
-**Ship:** `plan_stack_promotion` (local template from config path, param review, finalize `PlanRecord`); `execute_stack_promotion` (elicit, staleness, change-set-at-execute-time, audit).
-**Test:** Plan produces no CFN writes; execute only after confirm; reject stale plan; audit entry written.
+### M5 — Live stack compare — pending
+**Ship:** Fetch stacks/templates per env; normalize + hash; timestamps; map via mapper; detect unmapped; feed the same report model.
+**Test:** small real mapper slice on a machine with Leapp/SSO; HTML + shortlist correct; **zero AWS writes**.
 
-### M8 — Config promotion (plan → execute)
-**Ship:** `get_config` → `tmp/configs/` → `plan_config_promotion` → `execute_config_promotion` (`PutObject` + elicit + audit).
-**Test:** Download → edit temp → plan shows diff → execute uploads; confirmation gate works.
+### M6 — Plan store + audit — pending
+**Ship:** File plan repo + JSONL audit; staleness fields.
+**Test:** round-trip plan; mark executed; audit line; no AWS.
 
-### M9 — Binary promotion (plan → execute)
-**Ship:** `plan_binary_promotion` / `execute_binary_promotion` (`CopyObject` test→prod only).
-**Test:** Plan is read-only compare; execute copies only after elicit; audit logged.
+### M7 — Stack promotion — pending
+**Ship:** `plan_stack_promotion` + `execute_stack_promotion` with elicitation and change-set-at-execute-time.
+**Test:** plan read-only; execute only after confirm; stale plan rejected; audit written.
 
-### M10 — Docs + end-to-end smoke
-**Ship:** README + `docs/mapper-schema.md`, `tools-reference.md`, `setup-aws-profiles.md`, `safety-model.md`.
-**Test:** Fresh setup → `report_*` → plan → execute (one stack + one config) with elicitation in the actual MCP client.
+### M8 — Docs + E2E smoke — pending
+**Ship:** README, mapper schema, tools reference, AWS profile setup, safety model.
+**Test:** install (tarball or local) → configure → report → plan → execute one stack in Cursor or VS Code Copilot Agent.
 
-## Explicitly out of scope for this pass
+## Report UX (redesigned — matrix-first)
 
-- Auto-discovery / convention-based mapper generation
-- Nested stack comparison
-- Any React or .NET code
-- S3-backed shared audit log (v2)
-- Any tool that both plans and applies in a single call
+Desktop-first operational report. The matrix **is** the report; everything else is trimmed to a glance. Ruthlessly cut redundant chrome: no summary cards, no per-env count buttons, no duplicated "needs attention" list. Answer **"what needs attention?"** by ordering and filtering the one matrix, not by repeating it in extra sections.
+
+### Design principles (from the redesign)
+
+- **One source of truth.** The mapped-stack matrix is the only place stack state lives. Any "at a glance" number is plain text, never a second interactive surface that competes with the matrix filters.
+- **Surface attention in place.** Rows are sorted attention-first and a `Needs action only` toggle filters the matrix. No separate shortlist to scan-then-jump.
+- **Density over padding.** Compact cells, tabular numerics, muted secondary text. Timestamps and short hashes are present but small (hash in the cell `title`).
+- **Diffs get room, not cramped rows.** Diffs open in a focused slide-over drawer, not an inline disclosure squeezed under the row.
+- **Calm palette.** Near-neutral surfaces; status shown as a small colored **dot + text label** rather than heavy saturated pills. Restrained blue accent for links only.
+
+### Page hierarchy
+
+1. Compact header: **PromoteOps** as the primary brand mark, “Stack report” as subtitle, and a single prominent **N need action** callout (mapped/unmapped counts stay in chat summary only)
+2. **Mapped stack matrix** (primary; attention-sorted; filters + diff drawers) — no partial-data banner in HTML (auth/session failures fail the report before write)
+3. **Ignored stacks** — single collapsible table at the **very end** (AWS stacks not tracked for promotion)
+4. Collapsed "How to read this report" (methodology + report file path)
+
+### Header
+
+- Title: **PromoteOps stack report**, product mark, generated timestamp (timezone-explicit), source (`fixture`/`live`), region, flow **Dev → Test → Prod**
+- One-line summary counts as plain text (mapped, need action, unmapped) — `need action` emphasized when > 0
+- "Potentially sensitive infrastructure report" label
+
+### Mapped stack matrix
+
+- One stable row per mapper instance. Columns: **Template / Instance**, **Dev**, **Test**, **Prod**
+- **Rows are sorted attention-first**: `not_deployed` → `outdated` (target newer) → other `outdated` → everything else; ties break by template then instance id. (No separate shortlist section.)
+- Rows that need action carry a subtle `Needs action` tag and left accent in the identity cell
+- Each environment cell (dense): status **dot + label**, stack name (monospace) or mapper special value, compact last-activity time, and **View diff** only when outdated. No comparison-context chrome (`Baseline source`, `Matches Dev`, etc.). Short hash lives in the cell `title` tooltip
+- Dev is the source/baseline and is **never** labelled `outdated`
+- Sticky table header + sticky identity column; horizontal scroll on narrow screens
+
+### Status presentation
+
+| Status | Meaning | Visual |
+|---|---|---|
+| `current` | Deployed; content matches lower env (or Dev baseline) | Green dot + "Current" |
+| `outdated` | Deployed; content hash differs from lower env | Amber dot + "Outdated" |
+| `not_deployed` | Mapper `NOT_DEPLOYED`, or mapped name not found in AWS | Red dot + "Not deployed" |
+| `excluded` | Mapper `EXCLUDED` | Gray dot + "Excluded" |
+
+`unavailable` remains in the data model for rare non-auth read failures, but is **not** shown in the status filter and is **not** used for expired SSO — expired/missing sessions fail the whole report before HTML is written.
+
+Never rely on color alone (dot + text label always). Do not leak raw enum names into copy. Do **not** use statuses named `missing`, `in_sync`, or `skipped`.
+
+### Filtering
+
+- Progressive enhancement: search (template / instance / stack name), status filter (`current` / `outdated` / `not_deployed` / `excluded`), **Needs action only** toggle, **Clear**, and "Showing X of Y" (no matrix environment filter)
+- Useful empty state ("No mapped stacks match these filters.")
+- With JS disabled all rows remain readable; filters simply inactive
+
+### Drift detail and diffs (drawer)
+
+- Timestamps show **which side is newer**; they never define content equality
+- If target is newer than source: **"Target is newer; review before promotion."**
+- Each outdated cell has a professional **View diff** control (promotion direction is already implied by the column)
+- Opens a **slide-over drawer**. With JS: class-based open, **body scroll lock**, no background jump, `Esc` / scrim / Close clears the hash (no selected-row highlight). Without JS: `:target` fallback still works
+- Drawer title is promotion direction: **Dev → Test** / **Test → Prod**, with stack names as a subtitle (`payments-dev → payments-test`)
+- Orientation line: “Left: Test (current). Right: Dev (proposed for promotion).”
+- Hide Diff2Html file header chrome; wide = side-by-side, narrow = line-by-line
+- Render diffs only for outdated pairs; **always embed** the full diff (no size deferral)
+
+### Ignored stacks (last, single table)
+
+- Placed at the **very end** — it can be long (20–30 per env) and must not push the matrix down
+- **One collapsible table**. Columns: **Environment** (plain text, not status-style pills), **Stack**, **CloudFormation status**, **Last activity**
+- Environment filter (All / Dev / Test / Prod) with “Showing X of Y”
+- Sorted by environment then stack name; count shown in the section header
+- Explain: these exist in AWS but are **not tracked for promotion** (outside the mapper)
+- Empty state: "No ignored stacks found." / "No ignored stacks in this environment."
+
+### Visual system
+
+- Beige / warm paper light theme (forced light; no dark mode). System fonts, semantic status **dots**, restrained sage accent
+- Compact readable density; sticky matrix header + identity column
+- No external font/CDN dependency; no “potentially sensitive” banner copy in the header
+
+### Responsive, accessibility, print
+
+- Keep the relational table; horizontal scroll on narrow screens (never convert to unrelated cards); drawer becomes full-width
+- Keyboard-operable controls, visible focus, semantic headings/table markup (`caption`, `scope`); diff drawer is a focusable `role="dialog"` closable by link or `Esc`
+- Status never color-only; sufficient contrast; `prefers-reduced-motion` disables drawer animation
+- Stable timezone-explicit dates
+- Print CSS: diff drawers render inline (not hidden), table headers repeat, no nested scroll traps, ink-friendly surfaces, status text preserved
+
+### Additional improvements delivered / possible next
+
+- **Delivered:** attention-first ordering replaces the shortlist; `Needs action only` toggle; single unmapped table; drawer diffs; dark-mode-correct diffs; calmer dot-based palette; tooltip-hosted hashes/timestamps to cut clutter.
+- **Possible next:** column sorting on the unmapped table; a per-row "copy stack name" affordance; remembering filter state in the URL hash; a compact "only changed since <date>" filter; keyboard shortcut to jump between attention rows.
+
+### Chat summary contract (`report_stacks`)
+
+Always return:
+
+- Generated time + source (`fixture` / `live`)
+- Mapped-instance count
+- Attention counts by env/status
+- Unmapped Dev / Test / Prod counts
+- Partial-data warnings
+- Target-newer warning count (if any)
+- Capped shortlist + omitted count
+- Absolute HTML path **and** encoded `file://` URI
+
+Never dump all rows into chat. Empty attention → explicit “No mapped targets need attention.”
+
+### Static assets, packaging, security
+
+- Source: separate modules under `report/html`, `report/css` (+ optional minimal JS)
+- Generated output: **one portable self-contained `report.html`** — inline authored CSS and pinned Diff2Html CSS at generation time
+- No CDN, external fonts/images, runtime fetches, or neighboring asset requirements after generation
+- Resolve packaged source assets relative to `import.meta.url`; write reports only to the configured output path (never inside the installed package)
+- Reports may contain sensitive template bodies / identifiers: default path gitignored; write mode `0600`; atomic write-then-rename; escape all AWS/mapper-controlled text in HTML, attributes, IDs, and script-adjacent data; label report as potentially sensitive
+
+## Explicitly out of scope (OSS v1)
+
+- S3 config or binary comparison/promotion
+- Auto-discovery of stacks into the mapper
+- Nested stack deep comparison
+- React or .NET UI in this repo
+- Shared S3-backed audit log
+- Any tool that plans and applies in one call
+- Publishing to public npm before the stack path is solid
+
+## Work-machine validation path
+
+1. Complete M4 fixture UX locally; review HTML.
+2. Complete M5 against real profiles (or pack after M4 if only UX review on work machine).
+3. `npm version` bump → `npm pack` → send `.tgz` via Slack.
+4. Work machine: `npm install -g ./promoteops-x.y.z.tgz`, write `config.yaml` + `mapper.json`, start Leapp sessions, configure VS Code Copilot or Cursor MCP to run `promoteops`.
+5. Reinstall later builds the same way with a new version tarball.
