@@ -44,7 +44,7 @@ async function writePrivateFileAtomically(outputPath: string, html: string): Pro
   }
 }
 
-function countUnmapped(report: StackComparisonReport, environment: "dev" | "test" | "prod"): number {
+function countIgnored(report: StackComparisonReport, environment: "dev" | "test" | "prod"): number {
   return report.unmappedStacks.filter((stack) => stack.environment === environment).length;
 }
 
@@ -57,41 +57,39 @@ function buildChatSummary(
   const shortlist = buildAttentionShortlist(report);
   const shown = shortlist.slice(0, shortlistLimit);
   const omitted = shortlist.length - shown.length;
-  const attentionCounts = (["dev", "test", "prod"] as const).flatMap((environment) =>
-    (["outdated", "not_deployed"] as const).map((status) => {
+  const attentionByStatus = (["dev", "test", "prod"] as const).flatMap((environment) =>
+    (["outdated", "not_deployed"] as const).flatMap((status) => {
       const count = shortlist.filter(
         (finding) => finding.environment === environment && finding.status === status,
       ).length;
-      return `${environment} ${status}: ${count}`;
+      return count > 0 ? [`${environment} ${status}: ${count}`] : [];
     }),
-  ).join("; ");
+  );
   const targetNewerCount = shortlist.filter(
     (finding) => finding.status === "outdated" && finding.newerSide === "target",
   ).length;
-  const warnings = report.collectionWarnings.length === 0
-    ? "none"
-    : report.collectionWarnings
-      .map((warning) => `${warning.environment}: ${warning.message}`)
-      .join(" | ");
   const shortlistLines = shown.length === 0
-    ? ["- No mapped targets need attention."]
+    ? ["- No mapped stacks need action."]
     : shown.map((finding) =>
       `- ${finding.environment.toUpperCase()} ${finding.status}: ${finding.templateName} / ${finding.instanceId}${finding.newerSide === "target" ? " — Target is newer; review before promotion." : ""}`,
     );
 
-  return [
+  const lines = [
     `PromoteOps stack report — ${report.generatedAt} (${report.source})`,
     `Mapped instances: ${report.mappedInstances.length}`,
-    `Attention: ${shortlist.length} targets (${attentionCounts})`,
-    `Unmapped: dev ${countUnmapped(report, "dev")}; test ${countUnmapped(report, "test")}; prod ${countUnmapped(report, "prod")}`,
-    `Partial-data warnings: ${warnings}`,
-    `Target-newer warnings: ${targetNewerCount}`,
+    attentionByStatus.length > 0
+      ? `Need action: ${shortlist.length} (${attentionByStatus.join("; ")})`
+      : "Need action: 0",
+    `Ignored: dev ${countIgnored(report, "dev")}; test ${countIgnored(report, "test")}; prod ${countIgnored(report, "prod")}`,
+    `Target-newer: ${targetNewerCount}`,
     "Attention shortlist:",
     ...shortlistLines,
-    omitted > 0 ? `- … ${omitted} more omitted; open the HTML report.` : "- Omitted: 0",
-    `HTML path: ${outputPath}`,
-    `File URI: ${fileUri}`,
-  ].join("\n");
+  ];
+  if (omitted > 0) {
+    lines.push(`- … ${omitted} more omitted; open the HTML report.`);
+  }
+  lines.push(`HTML path: ${outputPath}`, `File URI: ${fileUri}`);
+  return lines.join("\n");
 }
 
 /** Orchestrates asset loading, HTML rendering, secure writing, and chat summary. */

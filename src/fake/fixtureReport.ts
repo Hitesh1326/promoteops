@@ -1,5 +1,6 @@
 /**
- * Temporary M4 fake data. Delete the entire `src/fake/` folder once live compare (M5) replaces fixture mode.
+ * Deterministic offline report data for UX iteration (`source=fixture` / `npm run report:fixture`).
+ * Kept alongside live compare so report HTML can be exercised without AWS.
  */
 import type {
   EnvironmentState,
