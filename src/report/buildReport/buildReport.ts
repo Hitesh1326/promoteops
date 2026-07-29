@@ -1,17 +1,11 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  buildAttentionShortlist,
-  type StackComparisonReport,
-} from "../../stacks/stackComparison/stackComparison.js";
+import type { StackComparisonReport } from "../../stacks/stackComparison/stackComparison.js";
 import { renderReport } from "../html/renderReport.js";
-
-const DEFAULT_SHORTLIST_LIMIT = 8;
 
 export interface BuildReportOptions {
   outputPath?: string;
-  shortlistLimit?: number;
 }
 
 export interface BuiltReport {
@@ -44,55 +38,33 @@ async function writePrivateFileAtomically(outputPath: string, html: string): Pro
   }
 }
 
-function countIgnored(report: StackComparisonReport, environment: "dev" | "test" | "prod"): number {
-  return report.unmappedStacks.filter((stack) => stack.environment === environment).length;
+function formatChatTimestamp(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(new Date(iso));
 }
 
 function buildChatSummary(
   report: StackComparisonReport,
-  outputPath: string,
   fileUri: string,
-  shortlistLimit: number,
 ): string {
-  const shortlist = buildAttentionShortlist(report);
-  const shown = shortlist.slice(0, shortlistLimit);
-  const omitted = shortlist.length - shown.length;
-  const attentionByStatus = (["dev", "test", "prod"] as const).flatMap((environment) =>
-    (["outdated", "not_deployed"] as const).flatMap((status) => {
-      const count = shortlist.filter(
-        (finding) => finding.environment === environment && finding.status === status,
-      ).length;
-      return count > 0 ? [`${environment} ${status}: ${count}`] : [];
-    }),
-  );
-  const targetNewerCount = shortlist.filter(
-    (finding) => finding.status === "outdated" && finding.newerSide === "target",
-  ).length;
-  const shortlistLines = shown.length === 0
-    ? ["- No mapped stacks need action."]
-    : shown.map((finding) =>
-      `- ${finding.environment.toUpperCase()} ${finding.status}: ${finding.templateName} / ${finding.instanceId}${finding.newerSide === "target" ? " — Target is newer; review before promotion." : ""}`,
-    );
+  const ignored = report.unmappedStacks.length;
+  const sourceLabel = report.source === "live" ? "Live" : "Fixture";
 
-  const lines = [
-    `PromoteOps stack report — ${report.generatedAt} (${report.source})`,
-    `Mapped instances: ${report.mappedInstances.length}`,
-    attentionByStatus.length > 0
-      ? `Need action: ${shortlist.length} (${attentionByStatus.join("; ")})`
-      : "Need action: 0",
-    `Ignored: dev ${countIgnored(report, "dev")}; test ${countIgnored(report, "test")}; prod ${countIgnored(report, "prod")}`,
-    `Target-newer: ${targetNewerCount}`,
-    "Attention shortlist:",
-    ...shortlistLines,
-  ];
-  if (omitted > 0) {
-    lines.push(`- … ${omitted} more omitted; open the HTML report.`);
-  }
-  lines.push(`HTML path: ${outputPath}`, `File URI: ${fileUri}`);
-  return lines.join("\n");
+  return [
+    `PromoteOps stack report — ${formatChatTimestamp(report.generatedAt)} (${sourceLabel})`,
+    `${report.mappedInstances.length} mapped · ${ignored} ignored`,
+    `Report: ${fileUri}`,
+  ].join("\n");
 }
 
-/** Orchestrates asset loading, HTML rendering, secure writing, and chat summary. */
 export async function buildReport(
   report: StackComparisonReport,
   options: BuildReportOptions = {},
@@ -116,12 +88,7 @@ export async function buildReport(
       outputPath,
       fileUri,
       html,
-      chatSummary: buildChatSummary(
-        report,
-        outputPath,
-        fileUri,
-        options.shortlistLimit ?? DEFAULT_SHORTLIST_LIMIT,
-      ),
+      chatSummary: buildChatSummary(report, fileUri),
     };
   } catch (error) {
     if (error instanceof ReportBuildError) throw error;

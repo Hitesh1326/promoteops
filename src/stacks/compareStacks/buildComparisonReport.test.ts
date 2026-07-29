@@ -31,7 +31,7 @@ function stack(
 }
 
 describe("buildComparisonReport", () => {
-  it("marks hash mismatches outdated and timestamps decide newerSide", () => {
+  it("marks outdated only when source is newer and content differs", () => {
     const instances = buildMapperInstances({
       mappings: {
         "payments.yaml": [{
@@ -48,10 +48,10 @@ describe("buildComparisonReport", () => {
       generatedAt: "2026-07-17T12:00:00.000Z",
       stacksByEnv: {
         dev: [stack("dev", "payments-dev", matchingTemplate, {
-          lastUpdatedTime: new Date("2026-07-10T00:00:00.000Z"),
+          lastUpdatedTime: new Date("2026-07-12T00:00:00.000Z"),
         })],
         test: [stack("test", "payments-test", driftedTemplate, {
-          lastUpdatedTime: new Date("2026-07-12T00:00:00.000Z"),
+          lastUpdatedTime: new Date("2026-07-10T00:00:00.000Z"),
         })],
         prod: [stack("prod", "payments-prod", driftedTemplate, {
           lastUpdatedTime: new Date("2026-07-08T00:00:00.000Z"),
@@ -60,7 +60,6 @@ describe("buildComparisonReport", () => {
     });
 
     const instance = report.mappedInstances[0];
-    expect(report.source).toBe("live");
     expect(instance.environments.dev.status).toBe("current");
     expect(instance.environments.test.status).toBe("outdated");
     expect(instance.environments.prod.status).toBe("current");
@@ -68,8 +67,73 @@ describe("buildComparisonReport", () => {
     expect(instance.diffs[0]).toMatchObject({
       fromEnv: "dev",
       toEnv: "test",
-      newerSide: "target",
+      newerSide: "source",
     });
+  });
+
+  it("does not mark outdated when the target env is newer, even if content differs", () => {
+    const instances = buildMapperInstances({
+      mappings: {
+        "ecr.yaml": [{
+          dev: "ecr-dev",
+          test: "ecr-test",
+          prod: "ecr-prod",
+        }],
+      },
+    });
+
+    const report = buildComparisonReport({
+      instances,
+      region: "us-east-1",
+      stacksByEnv: {
+        dev: [stack("dev", "ecr-dev", matchingTemplate, {
+          lastUpdatedTime: new Date("2026-04-16T19:02:00.000Z"),
+        })],
+        test: [stack("test", "ecr-test", driftedTemplate, {
+          lastUpdatedTime: new Date("2026-05-21T15:39:00.000Z"),
+        })],
+        prod: [stack("prod", "ecr-prod", driftedTemplate, {
+          lastUpdatedTime: new Date("2026-06-09T17:36:00.000Z"),
+        })],
+      },
+    });
+
+    const instance = report.mappedInstances[0];
+    expect(instance.environments.test.status).toBe("current");
+    expect(instance.environments.prod.status).toBe("current");
+    expect(instance.diffs).toEqual([]);
+  });
+
+  it("ignores whitespace-only template differences when source is newer", () => {
+    const instances = buildMapperInstances({
+      mappings: {
+        "api.yaml": [{
+          dev: "api-dev",
+          test: "api-test",
+          prod: "EXCLUDED",
+        }],
+      },
+    });
+
+    const compact = "AWSTemplateFormatVersion: '2010-09-09'\nResources:\n  Q:\n    Type: AWS::SNS::Topic\n";
+    const padded = "AWSTemplateFormatVersion: '2010-09-09'\n\nResources:\n  Q:\n    Type: AWS::SNS::Topic\n  \n";
+
+    const report = buildComparisonReport({
+      instances,
+      region: "us-east-1",
+      stacksByEnv: {
+        dev: [stack("dev", "api-dev", compact, {
+          lastUpdatedTime: new Date("2026-07-20T00:00:00.000Z"),
+        })],
+        test: [stack("test", "api-test", padded, {
+          lastUpdatedTime: new Date("2026-07-10T00:00:00.000Z"),
+        })],
+        prod: [],
+      },
+    });
+
+    expect(report.mappedInstances[0].environments.test.status).toBe("current");
+    expect(report.mappedInstances[0].diffs).toEqual([]);
   });
 
   it("treats mapper NOT_DEPLOYED / EXCLUDED and missing AWS stacks as planned", () => {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { reportStacks } from "./reportStacks.js";
 
 describe("reportStacks", () => {
-  it("returns the fixture report chat contract and writes HTML", async () => {
+  it("returns the slim fixture chat contract and writes HTML", async () => {
     const directory = await mkdtemp(join(tmpdir(), "promoteops-tool-"));
     const result = await reportStacks({
       outputPath: join(directory, "report.html"),
@@ -13,13 +13,10 @@ describe("reportStacks", () => {
     });
 
     expect(result.chatSummary).toContain("PromoteOps stack report");
-    expect(result.chatSummary).toContain("(fixture)");
-    expect(result.chatSummary).toContain("Need action:");
-    expect(result.chatSummary).toContain("Ignored:");
-    expect(result.chatSummary).toContain("Target-newer:");
-    expect(result.chatSummary).not.toContain("Partial-data");
-    expect(result.chatSummary).not.toContain("Unmapped:");
-    expect(result.chatSummary).not.toContain("Omitted: 0");
+    expect(result.chatSummary).toContain("(Fixture)");
+    expect(result.chatSummary).toMatch(/\d{1,2}:\d{2}:\d{2}\s?(AM|PM)/);
+    expect(result.chatSummary).toMatch(/\d+ mapped · \d+ ignored/);
+    expect(result.chatSummary).toContain("Report: file://");
     expect(result.html).toContain("Mapped stacks");
   });
 });

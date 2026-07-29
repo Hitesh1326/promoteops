@@ -13,7 +13,7 @@ import type {
   CollectionWarning,
 } from "../stackComparison/stackComparison.js";
 import type { RawStack } from "./fetchEnvStacks.js";
-import { hashTemplate, shortHash } from "./normalizeTemplate.js";
+import { hashTemplate, normalizeTemplate, shortHash, templatesContentEqual } from "./normalizeTemplate.js";
 
 type StackIndex = Map<string, RawStack>;
 
@@ -212,7 +212,14 @@ function resolveEnvironment(
     };
   }
 
-  const outdated = hash !== higher.source.hash;
+  const side = newerSide(higher.source.stack, stack);
+  const contentDiffers = !templatesContentEqual(
+    higher.source.stack.templateBody,
+    stack.templateBody,
+  );
+  // Timestamp-first: only Outdated when the lower env is strictly newer and content differs.
+  // If the target is newer or times match, it is not behind for promotion purposes.
+  const outdated = side === "source" && contentDiffers;
   const lowerLabel = higher.fromEnv === "dev" ? "Dev" : "Test";
 
   if (outdated) {
@@ -221,10 +228,21 @@ function resolveEnvironment(
       toEnv: environment as "test" | "prod",
       sourceStackName: higher.source.stack.stackName,
       targetStackName: stack.stackName,
-      sourceTemplate: higher.source.stack.templateBody,
-      targetTemplate: stack.templateBody,
-      newerSide: newerSide(higher.source.stack, stack),
+      sourceTemplate: normalizeTemplate(higher.source.stack.templateBody),
+      targetTemplate: normalizeTemplate(stack.templateBody),
+      newerSide: side,
     });
+  }
+
+  let comparisonContext: string;
+  if (outdated) {
+    comparisonContext = `Differs from ${lowerLabel}`;
+  } else if (!contentDiffers) {
+    comparisonContext = `Matches ${lowerLabel}`;
+  } else if (side === "target") {
+    comparisonContext = `${environment === "test" ? "Test" : "Prod"} is newer than ${lowerLabel}`;
+  } else {
+    comparisonContext = `Matches ${lowerLabel} for promotion (same activity time)`;
   }
 
   return {
@@ -236,7 +254,7 @@ function resolveEnvironment(
       stackName,
       lastActivity,
       shortHash: displayHash,
-      comparisonContext: outdated ? `Differs from ${lowerLabel}` : `Matches ${lowerLabel}`,
+      comparisonContext,
     },
   };
 }

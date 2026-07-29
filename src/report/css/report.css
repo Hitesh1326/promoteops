@@ -70,7 +70,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
   background: color-mix(in srgb, var(--surface) 92%, #fff);
   border-bottom: 1px solid var(--line);
 }
-.header-inner { padding: 20px 0 0; }
+.header-inner { padding: 20px 0; }
 .header-top {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 28px;
 }
@@ -92,25 +92,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
 .report-meta div { display: grid; gap: 1px; }
 .report-meta dt { color: var(--faint); font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
 .report-meta dd { margin: 0; font-weight: 600; white-space: nowrap; }
-.summary-line {
-  display: flex; flex-wrap: wrap; align-items: center;
-  margin: 14px 0 0; padding: 12px 0;
-  border-top: 1px solid var(--line);
-}
-.attention-metric {
-  display: inline-flex; align-items: baseline; gap: 7px;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 550;
-}
-.attention-metric strong {
-  font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; color: var(--text);
-}
-.attention-metric.is-active { color: var(--action); }
-.attention-metric.is-active strong { color: var(--action); }
 
 main { padding-block: 24px 56px; }
-main > section, main > .methodology { margin-top: 30px; }
+main > section { margin-top: 30px; }
 main > section:first-of-type { margin-top: 0; }
 
 .section-head { margin-bottom: 12px; }
@@ -175,13 +159,34 @@ h2 { font-size: 18px; font-weight: 700; }
 .filter-result { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .table-scroll {
-  max-height: 74vh; overflow: auto;
+  max-height: 74vh;
+  overflow: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--surface-2);
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--elevated);
   box-shadow: var(--shadow);
 }
-.table-scroll-static { max-height: none; }
+.table-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.table-scroll::-webkit-scrollbar-track {
+  background: var(--surface-2);
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 6px;
+  border: 2px solid var(--surface-2);
+}
+.table-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+.table-scroll::-webkit-scrollbar-corner {
+  background: var(--surface-2);
+}
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
-.matrix { min-width: 920px; }
+.matrix { min-width: 960px; }
 caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 thead th {
   position: sticky; top: 0; z-index: 4;
@@ -195,8 +200,26 @@ tbody tr:last-child > * { border-bottom: 0; }
 .matrix tbody td { border-left: 1px solid var(--line); }
 .matrix tbody tr:hover > * { background: color-mix(in srgb, var(--surface-2) 70%, var(--elevated)); }
 
+.row-num {
+  width: 2.5rem; min-width: 2.5rem; max-width: 2.5rem;
+  padding-left: 10px; padding-right: 8px;
+  color: var(--faint); font-variant-numeric: tabular-nums; font-weight: 650; text-align: right;
+}
+thead th.row-num { text-align: right; letter-spacing: 0; }
+.matrix .row-num {
+  position: sticky; left: 0; z-index: 3;
+  background: var(--elevated); border-left: 0;
+  box-shadow: 1px 0 var(--line);
+}
+.matrix thead th.row-num { z-index: 5; background: var(--surface-2); }
+.matrix thead th:nth-child(2) {
+  position: sticky; left: 2.5rem; z-index: 5;
+  background: var(--surface-2); box-shadow: 1px 0 var(--line);
+}
+.matrix tbody tr:hover .row-num { background: color-mix(in srgb, var(--surface-2) 70%, var(--elevated)); }
+
 .identity {
-  position: sticky; left: 0; z-index: 2;
+  position: sticky; left: 2.5rem; z-index: 2;
   min-width: 208px; width: 22%;
   background: var(--elevated); box-shadow: 1px 0 var(--line);
 }
@@ -242,6 +265,11 @@ tbody tr:last-child > * { border-bottom: 0; }
 .ignored-section .section-head { margin-bottom: 12px; }
 .ignored-toolbar { margin-bottom: 10px; }
 .ignored-table { min-width: 640px; }
+.ignored-table thead th,
+.ignored-table tbody td { border-left: 1px solid var(--line); }
+.ignored-table thead th:first-child,
+.ignored-table tbody td:first-child { border-left: 0; }
+.ignored-table tbody tr:hover > * { background: color-mix(in srgb, var(--surface-2) 70%, var(--elevated)); }
 .ignored-table .env-name { color: var(--muted); font-weight: 650; }
 .ignored-table code { font-weight: 600; }
 .empty-inline { margin: 0 0 12px; color: var(--muted); }
@@ -251,11 +279,6 @@ tbody tr:last-child > * { border-bottom: 0; }
   border: 1px dashed var(--line-strong); border-radius: var(--radius); background: var(--elevated);
 }
 .empty-state p { margin: 4px 0 0; color: var(--muted); }
-
-.methodology { border-top: 1px solid var(--line); padding-top: 6px; }
-.methodology > summary { cursor: pointer; padding: 10px 0; color: var(--muted); font-weight: 600; }
-.methodology-body { display: grid; gap: 6px; padding-bottom: 8px; color: var(--muted); max-width: 820px; }
-.methodology-body strong { color: var(--text); }
 
 footer { padding-block: 20px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12px; }
 .noscript-note {
@@ -303,6 +326,16 @@ footer { padding-block: 20px; border-top: 1px solid var(--line); color: var(--fa
 .d2h-wrapper { font-size: 12px; }
 .d2h-file-wrapper { margin-bottom: 0; border-color: var(--line); border-radius: var(--radius-sm); overflow: hidden; }
 .d2h-file-header { display: none !important; }
+.diff-wide .d2h-file-side-diff,
+.diff-narrow .d2h-file-diff {
+  position: relative;
+}
+.d2h-wrapper tbody td,
+.d2h-wrapper tbody th {
+  padding: 0;
+  border-bottom: 0;
+  vertical-align: middle;
+}
 
 @media (max-width: 860px) {
   .header-top { flex-direction: column; gap: 14px; }
@@ -330,12 +363,11 @@ footer { padding-block: 20px; border-top: 1px solid var(--line); color: var(--fa
   .skip-link, .filters, .ignored-toolbar, .noscript-note, footer, .diff-close, .diff-scrim { display: none !important; }
   .header-inner, main { width: 100%; }
   main { padding: 0; }
-  main > section, main > .methodology { margin-top: 18px; break-inside: avoid; }
+  main > section { margin-top: 18px; break-inside: avoid; }
   .table-scroll { max-height: none; overflow: visible; border: 1px solid var(--line); box-shadow: none; }
   .matrix, .ignored-table { min-width: 0; }
   thead th { position: static; }
   .identity { position: static; box-shadow: none; }
-  .methodology > summary { list-style: none; }
   details > summary { list-style: none; }
   details > *:not(summary) { display: block !important; }
   .diff-layer { display: block !important; position: static; page-break-inside: auto; }

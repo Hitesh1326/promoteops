@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { EnvironmentName } from "../../shared/environment.js";
+import { ENVIRONMENTS, type EnvironmentName } from "../../shared/environment.js";
 
 /** Fixture-first report model shared by stack tools and report rendering. */
 export const REPORT_STATUSES = [
@@ -145,4 +145,29 @@ export function findStackDiff(
   return report.mappedInstances
     .find((instance) => instance.instanceId === instanceId)
     ?.diffs.find((diff) => diff.fromEnv === fromEnv && diff.toEnv === toEnv);
+}
+
+export function findMappedInstances(
+  report: StackComparisonReport,
+  templateName: string,
+  stackName?: string,
+): MappedStackInstance[] {
+  const templateKey = templateName.trim().toLocaleLowerCase();
+  const stackKey = stackName?.trim().toLocaleLowerCase();
+
+  return report.mappedInstances.filter((instance) => {
+    if (instance.templateName.toLocaleLowerCase() !== templateKey) {
+      return false;
+    }
+    if (!stackKey) {
+      return true;
+    }
+    if (instance.instanceId.toLocaleLowerCase() === stackKey) {
+      return true;
+    }
+    return ENVIRONMENTS.some(
+      (environment) =>
+        instance.environments[environment].stackName.toLocaleLowerCase() === stackKey,
+    );
+  });
 }

@@ -3,7 +3,6 @@ import { html as renderDiffHtml } from "diff2html";
 import { EXCLUDED, NOT_DEPLOYED } from "../../mapper/specialValues/specialValues.js";
 import { ENVIRONMENTS, type EnvironmentName } from "../../shared/environment.js";
 import {
-  buildAttentionShortlist,
   diffId,
   stableRowId,
   type EnvironmentState,
@@ -19,7 +18,7 @@ const FILTER_STATUSES = ["current", "outdated", "not_deployed", "excluded"] as c
 const STATUS_LABELS: Record<ReportStatus, string> = {
   current: "Current",
   outdated: "Outdated",
-  not_deployed: "Not deployed",
+  not_deployed: "Not Deployed",
   excluded: "Excluded",
   unavailable: "Unavailable",
 };
@@ -54,11 +53,23 @@ function formatTime(value?: string): string {
   return `${new Date(value).toISOString().replace("T", " ").replace(/:\d\d\.\d+Z$/, "").replace(/Z$/, "")} UTC`;
 }
 
+function formatGeneratedAt(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+    timeZoneName: "short",
+  }).format(new Date(value));
+}
+
 function isoAttr(value?: string): string {
   return value ? ` datetime="${escapeHtml(value)}"` : "";
 }
 
-/** Attention severity, lower is more urgent. */
 function severity(status: ReportStatus, newerSide?: string): number {
   if (status === "not_deployed") return 0;
   if (status === "outdated" && newerSide === "target") return 1;
@@ -123,7 +134,7 @@ function renderCell(instance: MappedStackInstance, environment: EnvironmentName)
   </td>`;
 }
 
-function renderRow(instance: MappedStackInstance): string {
+function renderRow(instance: MappedStackInstance, index: number): string {
   const rowId = stableRowId(instance);
   const needsAction = ENVIRONMENTS.some((environment) => {
     const status = instance.environments[environment].status;
@@ -141,9 +152,9 @@ function renderRow(instance: MappedStackInstance): string {
   ).join(" ");
 
   return `<tr class="mapped-row${needsAction ? " row-attention" : ""}" id="${rowId}" data-report-row data-attention="${needsAction ? "1" : "0"}" data-search="${escapeHtml(searchText)}" data-statuses="${escapeHtml(statusData)}">
+    <td class="row-num">${index}</td>
     <th scope="row" class="identity">
       <span class="tpl">${escapeHtml(instance.templateName)}</span>
-      <code class="inst">${escapeHtml(instance.instanceId)}</code>
       ${needsAction ? `<span class="needs-label">Needs action</span>` : ""}
     </th>
     ${renderCell(instance, "dev")}
@@ -229,14 +240,15 @@ function renderIgnored(report: StackComparisonReport): string {
           </label>
           <span id="ignored-filter-result" class="filter-result" aria-live="polite">Showing ${stacks.length} of ${stacks.length}</span>
         </div>
-        <div class="table-scroll table-scroll-static">
+        <div class="table-scroll" tabindex="0" aria-label="Scrollable ignored stacks table">
           <table class="ignored-table">
             <caption>Stacks present in AWS but not tracked for promotion</caption>
-            <thead><tr><th scope="col">Environment</th><th scope="col">Stack</th><th scope="col">CloudFormation status</th><th scope="col">Last activity</th></tr></thead>
+            <thead><tr><th scope="col" class="row-num">#</th><th scope="col">Environment</th><th scope="col">Stack</th><th scope="col">CloudFormation status</th><th scope="col">Last activity</th></tr></thead>
             <tbody>${stacks
               .map(
-                (stack) =>
+                (stack, index) =>
                   `<tr data-ignored-row data-env="${stack.environment}">
+                    <td class="row-num">${index + 1}</td>
                     <td class="env-name">${ENVIRONMENT_LABELS[stack.environment]}</td>
                     <td><code>${escapeHtml(stack.stackName)}</code></td>
                     <td>${escapeHtml(stack.cloudFormationStatus)}</td>
@@ -274,6 +286,20 @@ function renderScript(): string {
     history.replaceState(null, "", location.pathname + location.search);
   };
 
+  const renumber = (list) => {
+    let n = 0;
+    list.forEach((row) => {
+      const cell = row.querySelector(".row-num");
+      if (!cell) return;
+      if (row.hidden) {
+        cell.textContent = "";
+        return;
+      }
+      n += 1;
+      cell.textContent = String(n);
+    });
+  };
+
   const apply = () => {
     const term = search.value.trim().toLocaleLowerCase();
     let shown = 0;
@@ -285,6 +311,7 @@ function renderScript(): string {
       row.hidden = !visible;
       if (visible) shown += 1;
     });
+    renumber(rows);
     result.textContent = "Showing " + shown + " of " + rows.length;
     empty.hidden = shown !== 0;
   };
@@ -297,6 +324,7 @@ function renderScript(): string {
       row.hidden = !visible;
       if (visible) shown += 1;
     });
+    renumber(ignoredRows);
     if (ignoredResult) ignoredResult.textContent = "Showing " + shown + " of " + ignoredRows.length;
     if (ignoredEmpty) ignoredEmpty.hidden = shown !== 0;
   };
@@ -365,12 +393,10 @@ function renderScript(): string {
 </script>`;
 }
 
-/** Renders the portable, self-contained operations report. */
 export function renderReport(report: StackComparisonReport, options: RenderReportOptions): string {
-  const generatedAt = formatTime(report.generatedAt);
+  const generatedAt = formatGeneratedAt(report.generatedAt);
   const ordered = attentionSorted(report.mappedInstances);
-  const needsAction = buildAttentionShortlist(report).length;
-  const rows = ordered.map(renderRow).join("");
+  const rows = ordered.map((instance, index) => renderRow(instance, index + 1)).join("");
   const diffLayers = ordered
     .flatMap((instance) =>
       instance.diffs
@@ -395,31 +421,25 @@ export function renderReport(report: StackComparisonReport, options: RenderRepor
       <div class="header-top">
         <div class="header-id">
           <h1 class="product-mark">PromoteOps</h1>
-          <p class="report-subtitle">Stack report</p>
         </div>
         <dl class="report-meta">
           <div><dt>Generated</dt><dd><time${isoAttr(report.generatedAt)}>${escapeHtml(generatedAt)}</time></dd></div>
-          <div><dt>Source</dt><dd>${escapeHtml(report.source)}</dd></div>
           <div><dt>Region</dt><dd>${escapeHtml(report.region)}</dd></div>
           <div><dt>Flow</dt><dd>Dev → Test → Prod</dd></div>
         </dl>
       </div>
-      <p class="summary-line">
-        <span class="attention-metric${needsAction > 0 ? " is-active" : ""}"><strong>${needsAction}</strong> need action</span>
-      </p>
     </div>
   </header>
   <main>
     <section id="matrix" aria-labelledby="matrix-heading">
       <div class="section-head">
         <h2 id="matrix-heading">Mapped stacks</h2>
-        <p class="section-intro">Sorted with anything needing action first. Content hashes decide equality; timestamps only show which side is newer.</p>
       </div>
       ${renderFilters(report.mappedInstances.length)}
       <div class="table-scroll" tabindex="0" aria-label="Scrollable mapped stack matrix">
         <table class="matrix">
           <caption>Mapped CloudFormation stacks by environment</caption>
-          <thead><tr><th scope="col">Template / Instance</th><th scope="col">Dev</th><th scope="col">Test</th><th scope="col">Prod</th></tr></thead>
+          <thead><tr><th scope="col" class="row-num">#</th><th scope="col">Template name</th><th scope="col">Dev stack name</th><th scope="col">Test stack name</th><th scope="col">Prod stack name</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
@@ -428,16 +448,7 @@ export function renderReport(report: StackComparisonReport, options: RenderRepor
     <section class="ignored-section" aria-labelledby="ignored-heading">
       ${renderIgnored(report)}
     </section>
-    <details class="methodology">
-      <summary>How to read this report</summary>
-      <div class="methodology-body">
-        <p><strong>Equality:</strong> normalized template content and SHA-256 hashes determine whether a target is current.</p>
-        <p><strong>Recency:</strong> CloudFormation activity timestamps identify the newer side; they never override content equality.</p>
-        <p><strong>File:</strong> <code>${escapeHtml(options.outputPath)}</code> — <a href="${escapeHtml(options.outputFileUri)}">open this report</a></p>
-      </div>
-    </details>
   </main>
-  <footer>Generated locally by PromoteOps · No runtime network requests</footer>
   <noscript><div class="noscript-note">JavaScript is disabled. All rows and diffs remain available; filters are inactive.</div></noscript>
   ${diffLayers}
   ${renderScript()}

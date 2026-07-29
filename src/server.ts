@@ -61,9 +61,14 @@ export async function startServer(): Promise<void> {
     "diff_stack",
     {
       description:
-        "Return a full template diff oriented from target current (left) to source proposed (right). Uses the last live report when available, or fixtures when source=fixture.",
+        "Return a full template diff for a mapped template (target current on the left, source proposed on the right). Prefer templateName; pass stackName only if the template has multiple instances.",
       inputSchema: {
-        instanceId: z.string().min(1).describe("Mapper instance id, normally the Dev stack name."),
+        templateName: z.string().min(1).describe(
+          "Mapper template name, e.g. ecs-infrastructure or payments.yaml.",
+        ),
+        stackName: z.string().min(1).optional().describe(
+          "Optional stack name from any env on the row (or instance id) when the template maps to more than one instance.",
+        ),
         fromEnv: z.enum(["dev", "test"]).describe("Lower source environment."),
         toEnv: z.enum(["test", "prod"]).describe("Higher target environment."),
         source: z.enum(["live", "fixture"]).optional().describe(
@@ -78,7 +83,7 @@ export async function startServer(): Promise<void> {
         openWorldHint: true,
       },
     },
-    async ({ instanceId, fromEnv, toEnv, source }) => {
+    async ({ templateName, stackName, fromEnv, toEnv, source }) => {
       if (!(
         (fromEnv === "dev" && toEnv === "test") ||
         (fromEnv === "test" && toEnv === "prod")
@@ -88,7 +93,7 @@ export async function startServer(): Promise<void> {
       return {
         content: [{
           type: "text" as const,
-          text: await diffStack({ instanceId, fromEnv, toEnv, source }),
+          text: await diffStack({ templateName, stackName, fromEnv, toEnv, source }),
         }],
       };
     },

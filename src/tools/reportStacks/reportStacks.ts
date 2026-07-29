@@ -12,13 +12,11 @@ export type ReportSource = "fixture" | "live";
 
 export interface ReportStacksInput {
   outputPath?: string;
-  /** Fixture keeps UX iteration offline; live is the default M5 path. */
   source?: ReportSource;
   configPath?: string;
   projectRoot?: string;
 }
 
-/** Runs the read-only report pipeline from fixture data or live AWS compare. */
 export async function reportStacks(input: ReportStacksInput = {}): Promise<BuiltReport> {
   const source = input.source ?? "live";
 

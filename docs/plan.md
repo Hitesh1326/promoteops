@@ -15,7 +15,7 @@ todos:
     content: "M4 — Fixture HTML report + report_stacks/diff_stack (matrix-first UX). Test: report:fixture; no AWS."
     status: completed
   - id: m5-live-compare
-    content: "M5 — Live compare: fetch/normalize/hash/timestamps; unmapped; target-newer warning triangle. Fixture mode kept for UX. Test: mocked inventory + fixture path; zero writes."
+    content: "M5 — Live compare: fetch/normalize/fingerprint; timestamp-first outdated; unmapped. Fixture mode kept for UX."
     status: completed
   - id: m6-plan-store-audit
     content: "M6 — Plan files + audit JSONL + staleness. Test: save/load/mark-executed without AWS."
@@ -71,19 +71,19 @@ MCP server (`promoteops`) that:
 - **Ignored / unmapped:** in AWS but not in mapper — visibility only, not promote targets. Shown as a separate end table (“Ignored stacks”).
 - Do not use labels `missing`, `in_sync`, or `skipped`.
 
-### Drift (hash + timestamp)
+### Drift (timestamp first, then content)
 
 | Signal | Job |
 |---|---|
-| Normalized template → **SHA-256** | Content equality → `current` / `outdated` |
-| Stack timestamps | Which side is **newer** (`newerSide`) |
+| Stack timestamps | Decide whether the target is **behind** the source |
+| Normalized template fingerprint | Confirm real content drift (ignore formatting noise) |
 
-- Hashes equal → `current` even if clocks differ.
-- Hashes differ → always `outdated` (content differs from lower env).
-- **Target-newer (rare):** outdated **and** higher env timestamp is newer than lower. Status stays Outdated. Show a **warning triangle** next to the label; hover: *“Target is newer than the source. Review carefully before promoting — you may overwrite newer changes.”* Repeat that line in the diff drawer. Chat shortlist sorts those above other outdated. Do not auto-flip promote direction in the report; M7 adds extra confirm at plan/execute.
+- **Outdated** only when the **source env is strictly newer** than the target **and** content differs.
+- If the target is newer (or times are equal), status stays **Current** for promotion — even if raw `GetTemplate` text differs. That matches “timestamp is source of truth.”
+- Content compare: JSON → parse + sorted keys; then whitespace-stripped fingerprint so YAML/JSON formatting does not false-flag. Diffs store normalized bodies for readable HTML.
 - Needs action = `outdated` + `not_deployed` (not `excluded`).
-- Normalize before hash so formatting noise does not false-flag outdated.
 - Expired SSO fails the whole report before HTML is written (not a mid-report status).
+- Rare “target newer but text differs” is **not** Outdated under this model (no promote-from-lower warning path).
 
 ### Code organization
 
@@ -125,7 +125,7 @@ src/
 | Tool | Type | Behavior |
 |---|---|---|
 | `report_stacks` | read-only | Live compare (default) or `source=fixture` → HTML + chat summary |
-| `diff_stack` | read-only | One instance pair template diff (live cache or fixture) |
+| `diff_stack` | read-only | Diff by `templateName` (+ optional `stackName`) for one env pair |
 | `plan_stack_promotion` | read-only | Local template + params → `PlanRecord` |
 | `execute_stack_promotion` | mutating | Elicit → staleness → change set → execute → audit |
 
@@ -139,7 +139,7 @@ Gate each milestone before starting the next.
 | **M2** | done | Config + mapper load | Fixtures valid/invalid |
 | **M3** | done | CFN clients + SSO errors | Per-env clients; re-login message |
 | **M4** | done | Fixture report + MCP tools; matrix-first UX (see §6) | `npm run report:fixture`; no AWS |
-| **M5** | done | Live fetch/normalize/hash/timestamps; unmapped; target-newer triangle; fixture mode retained | Unit tests on inventory→report; `report:fixture` still works; zero CFN writes |
+| **M5** | done | Live fetch/normalize/fingerprint; timestamp-first outdated; unmapped; fixture retained | Unit tests; `report:fixture`; zero CFN writes |
 | **M6** | pending | Plan store + audit | Round-trip without AWS |
 | **M7** | pending | Plan + execute promotion; extra caution if target newer | Plan read-only; elicit; stale rejected |
 | **M8** | pending | Docs + E2E | Report → plan → execute one stack in Copilot/Cursor |
@@ -149,24 +149,23 @@ Gate each milestone before starting the next.
 Desktop ops report. The **matrix is the report**. No summary cards, no duplicate shortlist section in HTML. Chat gets the capped shortlist; HTML surfaces attention via **sort + filters**.
 
 **Layout**
-1. Header: **PromoteOps** + “Stack report”, generated time (TZ-explicit), source (`fixture`/`live`), region, **Dev → Test → Prod**, plain-text counts (mapped / need action / ignored)
-2. Mapped matrix (primary)
-3. Ignored stacks table (end, collapsible)
-4. Collapsed “How to read this report”
+1. Header: **PromoteOps**, generated time (TZ-explicit), region, **Dev → Test → Prod**
+2. Mapped matrix (primary) — row-level “Needs action” when any env is outdated/not deployed
+3. Ignored stacks table (end)
 
 **Matrix**
 - Columns: Template/Instance · Dev · Test · Prod
-- One row per mapper instance; attention-first sort: `not_deployed` → target-newer `outdated` → other `outdated` → rest
-- Cell: status **dot + label**, stack name or special value, compact time, **View diff** when outdated; **warning triangle** (hover text above) when target-newer; short hash in `title`
+- One row per mapper instance; attention-first sort: `not_deployed` → `outdated` → rest
+- Cell: status **dot + label**, stack name or special value, compact time, **View diff** when outdated; short hash in `title`
 - Sticky header + identity column; beige light theme; system fonts; no CDN
 
 **Filters:** search, status, Needs action only, Clear, “Showing X of Y”. Usable empty state. Without JS, all rows still readable.
 
-**Diff drawer:** slide-over; title Dev→Test / Test→Prod; target-newer caution line when applicable; always embed full diff; Esc/scrim/close; works with `:target` without JS; print shows diffs inline.
+**Diff drawer:** slide-over; title Dev→Test / Test→Prod; always embed full normalized diff; Esc/scrim/close; works with `:target` without JS; print shows diffs inline.
 
 **Ignored stacks:** one table (Environment, Stack, CFN status, Last activity); env filter; “not tracked for promotion.”
 
-**Chat (`report_stacks`):** time, source, mapped count, need-action counts (non-zero statuses only), ignored counts by env, target-newer count, capped shortlist (omit “0 more” noise), HTML path + `file://` URI. Never dump all rows; no partial-data / unmapped wording.
+**Chat (`report_stacks`):** time + source; one pulse line (`N mapped · N ignored`); single `file://` report link. No need-action total in chat/header — row labels in the HTML are the source of truth.
 
 **Packaging:** self-contained `report.html` (inline CSS); write only to configured output path (`0600`, atomic); escape all mapper/AWS text; default path gitignored.
 

@@ -72,7 +72,7 @@ function paymentDiffs(): StackDiff[] {
       targetStackName: "payments-test",
       sourceTemplate: devTemplate,
       targetTemplate: testTemplate,
-      newerSide: "target",
+      newerSide: "source",
     },
     {
       fromEnv: "test",
@@ -97,8 +97,8 @@ function mappedInstances(): MappedStackInstance[] {
       templateName: "payments.yaml",
       instanceId: "payments-dev",
       environments: {
-        dev: state("dev", "current", "payments-dev", "Baseline source", "2026-07-18T12:04:00.000Z", "a91c04ef"),
-        test: state("test", "outdated", "payments-test", "Differs from Dev", "2026-07-18T12:20:00.000Z", "b7369cd1"),
+        dev: state("dev", "current", "payments-dev", "Baseline source", "2026-07-18T12:20:00.000Z", "a91c04ef"),
+        test: state("test", "outdated", "payments-test", "Differs from Dev", "2026-07-18T12:04:00.000Z", "b7369cd1"),
         prod: state("prod", "outdated", "payments-prod", "Differs from Test", "2026-07-15T09:10:00.000Z", "c81d721a"),
       },
       diffs: paymentDiffs(),
@@ -164,7 +164,6 @@ function mappedInstances(): MappedStackInstance[] {
   ];
 }
 
-/** Creates deterministic fake report data for M4 UX review without AWS calls. */
 export function createFixtureReport(): StackComparisonReport {
   return {
     generatedAt: new Date().toISOString(),
