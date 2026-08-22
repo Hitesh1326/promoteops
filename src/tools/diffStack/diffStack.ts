@@ -1,6 +1,5 @@
 import { createTwoFilesPatch } from "diff";
 import type { EnvironmentName } from "../../shared/environment.js";
-import { createFixtureReport } from "../../fake/fixtureReport.js";
 import {
   getCachedLiveReport,
   setCachedLiveReport,
@@ -12,16 +11,17 @@ import {
   type StackComparisonReport,
   type StackDiff,
 } from "../../stacks/stackComparison/stackComparison.js";
-import { loadLiveReport, type ReportSource } from "../reportStacks/reportStacks.js";
+import { loadLiveReport } from "../reportStacks/reportStacks.js";
 
 export interface DiffStackInput {
   templateName: string;
   stackName?: string;
   fromEnv: EnvironmentName;
   toEnv: DriftEnvironment;
-  source?: ReportSource;
   configPath?: string;
   projectRoot?: string;
+  /** Test-only: skip live AWS and diff this report. */
+  report?: StackComparisonReport;
 }
 
 export class StackDiffLookupError extends Error {
@@ -108,10 +108,7 @@ function formatDiff(input: DiffStackInput, diff: StackDiff): string {
 }
 
 async function resolveReport(input: DiffStackInput): Promise<StackComparisonReport> {
-  const source = input.source ?? "live";
-  if (source === "fixture") {
-    return createFixtureReport();
-  }
+  if (input.report) return input.report;
 
   const cached = getCachedLiveReport();
   if (cached) return cached;

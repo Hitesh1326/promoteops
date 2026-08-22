@@ -1,7 +1,8 @@
 /**
  * Per-environment CloudFormation clients using SSO profiles from config.
- * Clients are cached in-memory for the process lifetime so report/plan tools
- * reuse the same SDK client objects instead of recreating them every call.
+ * Credentials are resolved on every call. An SSO/auth failure drops any
+ * cached clients so the next tool call picks up a fresh `aws sso login`
+ * without reloading MCP.
  */
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { fromIni } from "@aws-sdk/credential-providers";
@@ -43,11 +44,6 @@ export async function getAwsClients(
   hooks: AwsClientHooks = {},
 ): Promise<EnvAwsClients> {
   const profile = aws.profiles[environment];
-  const cacheKey = `${environment}:${aws.region}:${profile}`;
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
 
   const credentials =
     hooks.createCredentials?.(profile) ??
@@ -56,6 +52,7 @@ export async function getAwsClients(
   try {
     await credentials();
   } catch (error) {
+    clearAwsClientCache();
     throw new AwsClientError(formatAwsAuthError(error, profile), { cause: error });
   }
 
@@ -72,7 +69,7 @@ export async function getAwsClients(
     region: aws.region,
     environment,
   };
-  cache.set(cacheKey, clients);
+  cache.set(`${environment}:${aws.region}:${profile}`, clients);
   return clients;
 }
 

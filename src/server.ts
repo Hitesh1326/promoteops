@@ -2,10 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { diffStack } from "./tools/diffStack/diffStack.js";
+import { executeStackPromotion } from "./tools/executeStackPromotion/executeStackPromotion.js";
+import { planStackPromotion } from "./tools/planStackPromotion/planStackPromotion.js";
 import { reportStacks } from "./tools/reportStacks/reportStacks.js";
 
 /**
- * PromoteOps MCP server: live stack report/diff (M5) with optional fixture mode for UX.
+ * PromoteOps MCP server: report/diff (read-only) plus plan-then-execute stack promotions.
  */
 export async function startServer(): Promise<void> {
   const server = new McpServer({
@@ -32,13 +34,10 @@ export async function startServer(): Promise<void> {
     "report_stacks",
     {
       description:
-        "Generate the read-only PromoteOps stack operations report from live AWS (default) or offline fixtures (source=fixture). Never writes to CloudFormation.",
+        "Generate the read-only PromoteOps stack operations report from live AWS. Never writes to CloudFormation.",
       inputSchema: {
         outputPath: z.string().optional().describe(
-          "Optional report output path. Defaults to paths.reportOutput from config.yaml for live, or tmp/report.html for fixture.",
-        ),
-        source: z.enum(["live", "fixture"]).optional().describe(
-          "live (default) uses SSO profiles + mapper; fixture uses deterministic offline data for UX work.",
+          "Optional report output path. Defaults to paths.reportOutput from config.yaml.",
         ),
       },
       annotations: {
@@ -49,8 +48,8 @@ export async function startServer(): Promise<void> {
         openWorldHint: true,
       },
     },
-    async ({ outputPath, source }) => {
-      const result = await reportStacks({ outputPath, source });
+    async ({ outputPath }) => {
+      const result = await reportStacks({ outputPath });
       return {
         content: [{ type: "text" as const, text: result.chatSummary }],
       };
@@ -71,9 +70,6 @@ export async function startServer(): Promise<void> {
         ),
         fromEnv: z.enum(["dev", "test"]).describe("Lower source environment."),
         toEnv: z.enum(["test", "prod"]).describe("Higher target environment."),
-        source: z.enum(["live", "fixture"]).optional().describe(
-          "live (default) or fixture. Fixture needs no AWS.",
-        ),
       },
       annotations: {
         title: "Diff CloudFormation stack templates",
@@ -83,7 +79,7 @@ export async function startServer(): Promise<void> {
         openWorldHint: true,
       },
     },
-    async ({ templateName, stackName, fromEnv, toEnv, source }) => {
+    async ({ templateName, stackName, fromEnv, toEnv }) => {
       if (!(
         (fromEnv === "dev" && toEnv === "test") ||
         (fromEnv === "test" && toEnv === "prod")
@@ -93,7 +89,7 @@ export async function startServer(): Promise<void> {
       return {
         content: [{
           type: "text" as const,
-          text: await diffStack({ templateName, stackName, fromEnv, toEnv, source }),
+          text: await diffStack({ templateName, stackName, fromEnv, toEnv }),
         }],
       };
     },

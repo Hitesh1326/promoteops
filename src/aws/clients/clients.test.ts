@@ -67,16 +67,16 @@ describe("getAwsClients", () => {
     expect(createCredentials).toHaveBeenCalledWith("prod-profile");
   });
 
-  it("caches clients for the same environment/profile/region", async () => {
+  it("re-resolves credentials on every call so a re-login is visible", async () => {
     const createCredentials = vi.fn(() => vi.fn(async () => ({ accessKeyId: "ak", secretAccessKey: "sk" })));
     const createCloudFormationClient = vi.fn(() => ({ kind: "cfn" }) as never);
     const hooks = { createCredentials, createCloudFormationClient };
 
-    const first = await getAwsClients("dev", aws, hooks);
-    const second = await getAwsClients("dev", aws, hooks);
+    await getAwsClients("dev", aws, hooks);
+    await getAwsClients("dev", aws, hooks);
 
-    expect(second).toBe(first);
-    expect(createCloudFormationClient).toHaveBeenCalledTimes(1);
+    expect(createCredentials).toHaveBeenCalledTimes(2);
+    expect(createCloudFormationClient).toHaveBeenCalledTimes(2);
   });
 
   it("throws AwsClientError with a re-login message when SSO credentials are expired", async () => {
@@ -89,5 +89,30 @@ describe("getAwsClients", () => {
     await expect(getAwsClients("dev", aws, { createCredentials })).rejects.toThrow(
       "aws sso login --profile dev-profile",
     );
+  });
+
+  it("drops cached clients after SSO expiry so a re-login works without restarting MCP", async () => {
+    let expired = false;
+    const createCredentials = vi.fn(() =>
+      vi.fn(async () => {
+        if (expired) {
+          throw new Error("Token is expired. To refresh this SSO session run aws sso login");
+        }
+        return { accessKeyId: "ak", secretAccessKey: "sk" };
+      }),
+    );
+    const createCloudFormationClient = vi.fn(() => ({ kind: "cfn" }) as never);
+    const hooks = { createCredentials, createCloudFormationClient };
+
+    const first = await getAwsClients("dev", aws, hooks);
+    expect(createCloudFormationClient).toHaveBeenCalledTimes(1);
+
+    expired = true;
+    await expect(getAwsClients("dev", aws, hooks)).rejects.toThrow("aws sso login --profile dev-profile");
+
+    expired = false;
+    const afterLogin = await getAwsClients("dev", aws, hooks);
+    expect(afterLogin).not.toBe(first);
+    expect(createCloudFormationClient).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { sampleComparisonReport } from "../../stacks/stackComparison/sampleReport.js";
 import {
   diffStack,
   StackDiffLookupError,
@@ -11,7 +12,7 @@ describe("diffStack", () => {
       templateName: "payments.yaml",
       fromEnv: "dev",
       toEnv: "test",
-      source: "fixture",
+      report: sampleComparisonReport(),
     });
 
     expect(output).toContain("Template: payments.yaml");
@@ -26,22 +27,10 @@ describe("diffStack", () => {
       stackName: "payments-test",
       fromEnv: "dev",
       toEnv: "test",
-      source: "fixture",
+      report: sampleComparisonReport(),
     });
 
     expect(output).toContain("TEST current: payments-test");
-  });
-
-  it("returns the full large-platform fixture diff", async () => {
-    const output = await diffStack({
-      templateName: "large-platform.yaml",
-      fromEnv: "dev",
-      toEnv: "test",
-      source: "fixture",
-    });
-
-    expect(output.length).toBeGreaterThan(32_000);
-    expect(output).toContain("Resource899");
   });
 
   it("rejects current pairs", async () => {
@@ -49,7 +38,7 @@ describe("diffStack", () => {
       templateName: "analytics.yaml",
       fromEnv: "dev",
       toEnv: "test",
-      source: "fixture",
+      report: sampleComparisonReport(),
     })).rejects.toThrow(StackDiffNotFoundError);
   });
 
@@ -58,7 +47,7 @@ describe("diffStack", () => {
       templateName: "missing.yaml",
       fromEnv: "dev",
       toEnv: "test",
-      source: "fixture",
+      report: sampleComparisonReport(),
     })).rejects.toThrow(StackDiffLookupError);
   });
 });
