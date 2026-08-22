@@ -56,10 +56,9 @@ function buildChatSummary(
   fileUri: string,
 ): string {
   const ignored = report.unmappedStacks.length;
-  const sourceLabel = report.source === "live" ? "Live" : "Fixture";
 
   return [
-    `PromoteOps stack report — ${formatChatTimestamp(report.generatedAt)} (${sourceLabel})`,
+    `PromoteOps stack report — ${formatChatTimestamp(report.generatedAt)} (Live)`,
     `${report.mappedInstances.length} mapped · ${ignored} ignored`,
     `Report: ${fileUri}`,
   ].join("\n");

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ENVIRONMENTS, type EnvironmentName } from "../../shared/environment.js";
 
-/** Fixture-first report model shared by stack tools and report rendering. */
+/** Report model shared by stack tools and HTML rendering. */
 export const REPORT_STATUSES = [
   "current",
   "outdated",
@@ -55,7 +55,7 @@ export interface CollectionWarning {
 
 export interface StackComparisonReport {
   generatedAt: string;
-  source: "fixture" | "live";
+  source: "live";
   region: string;
   mappedInstances: MappedStackInstance[];
   unmappedStacks: UnmappedStack[];
