@@ -95,6 +95,83 @@ export async function startServer(): Promise<void> {
     },
   );
 
+  server.registerTool(
+    "plan_stack_promotion",
+    {
+      description:
+        "Create a read-only promotion plan for one mapped stack (local template + explicit parameters). Does not write to CloudFormation. Returns a planId for execute_stack_promotion, which must be explicitly confirmed by the user before use.",
+      inputSchema: {
+        templateName: z.string().min(1).describe(
+          "Mapper template name, e.g. payments.yaml.",
+        ),
+        stackName: z.string().min(1).optional().describe(
+          "Optional stack/instance name when the template maps to more than one instance.",
+        ),
+        sourceEnv: z.enum(["dev", "test"]).describe("Lower source environment."),
+        targetEnv: z.enum(["test", "prod"]).describe("Higher target environment."),
+        parameters: z
+          .record(z.string(), z.string())
+          .describe("Explicit CloudFormation parameter key/value pairs (no UsePreviousValue)."),
+      },
+      annotations: {
+        title: "Plan CloudFormation stack promotion",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ templateName, stackName, sourceEnv, targetEnv, parameters }) => {
+      if (!(
+        (sourceEnv === "dev" && targetEnv === "test") ||
+        (sourceEnv === "test" && targetEnv === "prod")
+      )) {
+        throw new Error("Supported promotion pairs are dev → test and test → prod.");
+      }
+      const result = await planStackPromotion({
+        templateName,
+        stackName,
+        sourceEnv,
+        targetEnv,
+        parameters,
+      });
+      return {
+        content: [{ type: "text" as const, text: result.chatSummary }],
+      };
+    },
+  );
+
+  server.registerTool(
+    "execute_stack_promotion",
+    {
+      description:
+        "Execute a previously created stack promotion plan by planId. Mutates AWS (creates and executes a CloudFormation change set), polls until CloudFormation finishes applying it, and reports whether it succeeded or rolled back. Only call with a planId explicitly confirmed by the user in this conversation — never infer or reuse one. Rejects stale or already-executed plans.",
+      inputSchema: {
+        planId: z.string().min(1).describe(
+          "planId returned by plan_stack_promotion, explicitly confirmed by the user.",
+        ),
+      },
+      annotations: {
+        title: "Execute CloudFormation stack promotion",
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true,
+      },
+    },
+    async ({ planId }) => {
+      const result = await executeStackPromotion(
+        { planId },
+        {
+          confirm: async () => ({ action: "accept" }),
+        },
+      );
+      return {
+        content: [{ type: "text" as const, text: result.chatSummary }],
+      };
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
