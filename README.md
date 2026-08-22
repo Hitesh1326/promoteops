@@ -1,5 +1,9 @@
 # PromoteOps
 
+[![npm version](https://img.shields.io/npm/v/promoteops.svg)](https://www.npmjs.com/package/promoteops)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-brightgreen)](https://nodejs.org/)
+
 An MCP server that compares AWS CloudFormation stacks across separate environment accounts, for example Development, Test, and Production, and promotes changes between them only after a plan has been reviewed and approved.
 
 ## The problem this solves
@@ -76,7 +80,7 @@ Requires Node.js 20 or newer, an AWS account with CloudFormation stacks in up to
 
 ### Option A: Install from npm (recommended)
 
-Create a folder to hold the configuration. This does not need to be named `promoteops` and does not need to contain any source code; it just needs to hold two files, `config.yaml` and `mapper.json`.
+Create a folder to hold the configuration. This does not need to be named `promoteops` and does not need to contain any source code; it just needs to hold two files, `config.yaml` and `mapper.json`. Then install the [`promoteops`](https://www.npmjs.com/package/promoteops) package from npm:
 
 ```bash
 mkdir promoteops-config
@@ -142,7 +146,7 @@ Both `config.yaml` and `mapper.json` are listed in `.gitignore`, since they cont
 
 ## Connecting PromoteOps to an agent
 
-PromoteOps is published on npm as [`promoteops`](https://www.npmjs.com/package/promoteops). Add it to the MCP configuration of any MCP-compatible AI coding agent:
+Add PromoteOps to the MCP configuration of any MCP-compatible AI coding agent:
 
 ```json
 {
