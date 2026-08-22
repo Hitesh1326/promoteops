@@ -10,15 +10,13 @@
     "dist",
     "README.md",
     "config.example.yaml",
-    "mapper.example.json",
-    "docs/plan.md"
+    "mapper.example.json"
   ],
   "scripts": {
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean --silent && tsc && node dist/scripts/copyReportAssets.js",
     "test": "vitest run",
     "start": "node dist/index.js",
-    "report:fixture": "npm run build --silent && node dist/fake/writeFixtureReport.js",
     "prepare": "npm run build"
   },
   "engines": {

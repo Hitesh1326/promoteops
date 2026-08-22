@@ -8,13 +8,8 @@ config.yaml
 .env
 .env.*
 
-# Config edit workspace
-tmp/**
-
-# Keep the temp directory structure in git
-!tmp/
-!tmp/configs/
-!tmp/configs/.gitkeep
+# Generated reports (recreated by report_stacks)
+tmp/
 
 # OS / editor
 .DS_Store
