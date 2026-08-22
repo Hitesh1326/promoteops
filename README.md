@@ -80,20 +80,15 @@ Requires Node.js 20 or newer, an AWS account with CloudFormation stacks in up to
 
 ### Option A: Install from npm (recommended)
 
-Create a folder to hold the configuration. This does not need to be named `promoteops` and does not need to contain any source code; it just needs to hold two files, `config.yaml` and `mapper.json`. Then install the [`promoteops`](https://www.npmjs.com/package/promoteops) package from npm:
-
 ```bash
 mkdir promoteops-config
 cd promoteops-config
 npm install promoteops
-```
-
-`npm install` downloads the package into `node_modules/promoteops`, which includes the two example files needed to configure it. Copy them out and rename them:
-
-```bash
 cp node_modules/promoteops/config.example.yaml ./config.yaml
 cp node_modules/promoteops/mapper.example.json ./mapper.json
 ```
+
+This installs [`promoteops`](https://www.npmjs.com/package/promoteops) and copies the two config files into the current folder. Edit those files next.
 
 ### Option B: Run from source
 
@@ -108,7 +103,7 @@ cp mapper.example.json mapper.json
 
 ### Fill in the configuration
 
-Either option produces the same two files to edit. Edit `config.yaml` with the AWS region, the AWS profile name for each environment, the path to the local CloudFormation templates, and where the report should be written:
+Either option produces the same two files to edit. Edit `config.yaml` with the AWS region, the AWS profile name for each environment, and absolute paths for the templates, mapper, and report:
 
 ```yaml
 aws:
@@ -119,13 +114,14 @@ aws:
     prod: my-prod-sso-profile
 
 templates:
-  localPath: ../path/to/cloudformation-templates
+  localPath: /absolute/path/to/cloudformation-templates
 
 paths:
-  mapper: ./mapper.json
-  configTempDir: ./tmp/configs
-  reportOutput: ./tmp/report.html
+  mapper: /absolute/path/to/promoteops-config/mapper.json
+  reportOutput: /absolute/path/to/promoteops-config/tmp/report.html
 ```
+
+For Option A, `promoteops-config` is the folder created above. For Option B, use the cloned repo path instead.
 
 Edit `mapper.json` to list each template PromoteOps should track, along with its stack name in each environment. If a template doesn't have a stack in an environment yet, or shouldn't be promoted there at all, use the sentinel values `NOT_DEPLOYED` or `EXCLUDED` instead of a stack name:
 
@@ -142,8 +138,6 @@ Edit `mapper.json` to list each template PromoteOps should track, along with its
 }
 ```
 
-Both `config.yaml` and `mapper.json` are listed in `.gitignore`, since they contain stack names and paths specific to a given setup.
-
 ## Connecting PromoteOps to an agent
 
 Add PromoteOps to the MCP configuration of any MCP-compatible AI coding agent. Replace the `--root` placeholder with the absolute path to the folder that holds `config.yaml` and `mapper.json` (the folder created in Option A):
@@ -158,8 +152,6 @@ Add PromoteOps to the MCP configuration of any MCP-compatible AI coding agent. R
   }
 }
 ```
-
-That folder does not need to be a clone of this repository; it can be any directory, since `npx` downloads and runs the published package on its own.
 
 For Option B, point the agent at the built entry file directly instead of using `npx`, and pass `--root` as the cloned repo folder (where `config.yaml` and `mapper.json` live):
 

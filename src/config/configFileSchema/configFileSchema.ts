@@ -25,7 +25,6 @@ export const configFileSchema = z
     paths: z
       .object({
         mapper: nonEmptyString,
-        configTempDir: nonEmptyString,
         reportOutput: nonEmptyString,
       })
       .strict(),

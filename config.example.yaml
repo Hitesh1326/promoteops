@@ -1,5 +1,5 @@
 # Copy to config.yaml and fill in real values.
-# config.yaml is gitignored.
+# Replace the placeholder paths with absolute paths on this machine.
 
 aws:
   region: us-east-1
@@ -8,13 +8,9 @@ aws:
     test: my-test-sso-profile
     prod: my-prod-sso-profile
 
-# Absolute or project-relative path to the local CloudFormation templates root
-# used when planning stack promotions (checked-out git working tree).
 templates:
-  localPath: ../path/to/cloudformation-templates
+  localPath: /absolute/path/to/cloudformation-templates
 
-# Paths relative to the promoteops project root
 paths:
-  mapper: ./mapper.json
-  configTempDir: ./tmp/configs
-  reportOutput: ./tmp/report.html
+  mapper: /absolute/path/to/promoteops-config/mapper.json
+  reportOutput: /absolute/path/to/promoteops-config/tmp/report.html

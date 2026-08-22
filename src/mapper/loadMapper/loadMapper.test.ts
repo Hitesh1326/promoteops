@@ -134,7 +134,6 @@ async function writeConfig(projectRoot: string): Promise<void> {
       "  localPath: ./templates",
       "paths:",
       "  mapper: ./mapper.json",
-      "  configTempDir: ./tmp/configs",
       "  reportOutput: ./tmp/report.html",
     ].join("\n"),
   );

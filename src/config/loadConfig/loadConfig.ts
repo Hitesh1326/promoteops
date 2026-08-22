@@ -22,7 +22,6 @@ export interface PromoteOpsConfig {
   };
   paths: {
     mapper: string;
-    configTempDir: string;
     reportOutput: string;
   };
   configPath: string;

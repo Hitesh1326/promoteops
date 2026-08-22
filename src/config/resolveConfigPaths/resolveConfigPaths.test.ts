@@ -10,7 +10,7 @@ describe("resolveConfigPaths", () => {
     const resolved = resolveConfigPaths(
       {
         templates: { localPath: "../templates" },
-        paths: { mapper: "./mapper.json", configTempDir: "./tmp/configs", reportOutput: "./tmp/report.html" },
+        paths: { mapper: "./mapper.json", reportOutput: "./tmp/report.html" },
       },
       projectRoot,
     );
@@ -18,7 +18,6 @@ describe("resolveConfigPaths", () => {
     expect(resolved).toEqual({
       templatesLocalPath: path.resolve(projectRoot, "../templates"),
       mapper: path.join(projectRoot, "mapper.json"),
-      configTempDir: path.join(projectRoot, "tmp/configs"),
       reportOutput: path.join(projectRoot, "tmp/report.html"),
     });
   });
@@ -27,7 +26,7 @@ describe("resolveConfigPaths", () => {
     const resolved = resolveConfigPaths(
       {
         templates: { localPath: "/abs/templates" },
-        paths: { mapper: "/abs/mapper.json", configTempDir: "./tmp/configs", reportOutput: "./tmp/report.html" },
+        paths: { mapper: "/abs/mapper.json", reportOutput: "./tmp/report.html" },
       },
       "/project",
     );

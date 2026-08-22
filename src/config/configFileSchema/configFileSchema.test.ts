@@ -10,7 +10,6 @@ const validConfig = {
   templates: { localPath: "./templates" },
   paths: {
     mapper: "./mapper.json",
-    configTempDir: "./tmp/configs",
     reportOutput: "./tmp/report.html",
   },
 };

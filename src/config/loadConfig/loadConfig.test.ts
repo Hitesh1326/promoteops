@@ -23,7 +23,6 @@ describe("loadConfig", () => {
         "  localPath: ../templates",
         "paths:",
         "  mapper: ./mapper.json",
-        "  configTempDir: ./tmp/configs",
         "  reportOutput: ./tmp/report.html",
       ].join("\n"),
     );
@@ -37,7 +36,6 @@ describe("loadConfig", () => {
     });
     expect(config.resolvedPaths.templatesLocalPath).toBe(path.resolve(projectRoot, "../templates"));
     expect(config.resolvedPaths.mapper).toBe(path.join(projectRoot, "mapper.json"));
-    expect(config.resolvedPaths.configTempDir).toBe(path.join(projectRoot, "tmp/configs"));
     expect(config.resolvedPaths.reportOutput).toBe(path.join(projectRoot, "tmp/report.html"));
   });
 
@@ -56,7 +54,6 @@ describe("loadConfig", () => {
         "  localPath: ../templates",
         "paths:",
         "  mapper: ./mapper.json",
-        "  configTempDir: ./tmp/configs",
         "  reportOutput: ./tmp/report.html",
       ].join("\n"),
     );

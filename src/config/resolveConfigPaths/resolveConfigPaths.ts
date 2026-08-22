@@ -6,7 +6,6 @@ interface ConfigPaths {
   };
   paths: {
     mapper: string;
-    configTempDir: string;
     reportOutput: string;
   };
 }
@@ -14,7 +13,6 @@ interface ConfigPaths {
 export interface ResolvedConfigPaths {
   templatesLocalPath: string;
   mapper: string;
-  configTempDir: string;
   reportOutput: string;
 }
 
@@ -22,7 +20,6 @@ export function resolveConfigPaths(config: ConfigPaths, projectRoot: string): Re
   return {
     templatesLocalPath: resolveFromProjectRoot(config.templates.localPath, projectRoot),
     mapper: resolveFromProjectRoot(config.paths.mapper, projectRoot),
-    configTempDir: resolveFromProjectRoot(config.paths.configTempDir, projectRoot),
     reportOutput: resolveFromProjectRoot(config.paths.reportOutput, projectRoot),
   };
 }
