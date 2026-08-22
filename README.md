@@ -60,7 +60,7 @@ PromoteOps separates reading from writing. Generating a report or a diff never c
 
 ### Promoting a stack: `plan_stack_promotion` then `execute_stack_promotion`
 
-![Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/promoting-stack-flow.png)
+<img src="https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/promoting-stack-flow.png" alt="Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log" width="480" />
 
 The check against the target stack's hash, right before applying anything, is what makes the plan trustworthy. If another deployment changed the target stack after the plan was created, the plan is discarded instead of being applied against infrastructure that no longer matches what was reviewed.
 
