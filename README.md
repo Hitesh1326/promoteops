@@ -10,7 +10,7 @@ PromoteOps is a Model Context Protocol (MCP) server that runs locally and connec
 
 PromoteOps reads a small configuration file that maps each CloudFormation template to its stack name in each environment, then uses that mapping to generate a report like the one below, where every stack is currently in sync:
 
-Report showing all stacks in sync
+![Report showing all stacks in sync](./assets/report-current.png)
 
 ## What PromoteOps actually does
 
@@ -19,8 +19,6 @@ Report showing all stacks in sync
 3. Builds a promotion plan: reads the local template file intended for deployment, records the target stack's current state, and saves the plan to disk. This step does not change anything in AWS.
 4. Executes a promotion plan, but only when given the exact plan ID and an explicit confirmation to proceed. Before applying anything, it re-checks that the target stack has not changed since the plan was created. If it has, the plan is rejected, and a new plan has to be made.
 
-
-
 ## What PromoteOps is not
 
 - Not a CI/CD pipeline. It does not run on a schedule or in response to a git push; every action is triggered explicitly, through the agent.
@@ -28,10 +26,7 @@ Report showing all stacks in sync
 - Does not store or transmit AWS credentials. It uses the AWS profiles already configured on the machine it runs on.
 - Built around a fixed environment chain (for example Development to Test, Test to Production), not a general multi-account orchestration tool.
 
-
-
 ## Core features
-
 
 | Feature                                                                    | MCP tool                  | Can it change AWS? |
 | -------------------------------------------------------------------------- | ------------------------- | ------------------ |
@@ -41,14 +36,13 @@ Report showing all stacks in sync
 | Build a promotion plan from a local template, without applying it          | `plan_stack_promotion`    | No                 |
 | Apply a previously approved plan                                           | `execute_stack_promotion` | Yes                |
 
-
 Each row in the report is flagged when it needs attention:
 
-Report showing test outdated compared to dev
+![Report showing test outdated compared to dev](./assets/report-outdated.png)
 
 Opening a flagged row shows the exact diff between what's deployed and what would be promoted:
 
-Diff view between dev and test
+![Diff view between dev and test](./assets/diff-drawer.png)
 
 ## How the two flows work
 
@@ -56,13 +50,13 @@ PromoteOps separates reading from writing. Generating a report or a diff never c
 
 ### Reading drift: `report_stacks` and `diff_stack`
 
-Reading drift flow: mapper.json into Compare stacks, into Development / Test / Production AWS accounts, into a comparison report, which feeds report_stacks and diff_stack
+![Reading drift flow: mapper.json into Compare stacks, into Development / Test / Production AWS accounts, into a comparison report, which feeds report_stacks and diff_stack](./assets/reading-drift-flow.png)
 
 `report_stacks` reads the live template for every mapped stack in each environment and produces an HTML report plus a summary of what has drifted. `diff_stack` uses the same comparison data to show the exact diff for one stack.
 
 ### Promoting a stack: `plan_stack_promotion` then `execute_stack_promotion`
 
-Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log
+![Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log](./assets/promoting-stack-flow.png)
 
 The check against the target stack's hash, right before applying anything, is what makes the plan trustworthy. If another deployment changed the target stack after the plan was created, the plan is discarded instead of being applied against infrastructure that no longer matches what was reviewed.
 
@@ -76,11 +70,28 @@ The check against the target stack's hash, right before applying anything, is wh
 - Every plan created, every confirmation accepted or declined, every rejected stale or repeated plan, and every executed change is written to a plain text audit log on the local machine, at `~/.promoteops/audit.log`.
 - PromoteOps uses the AWS credentials and profiles already configured on the local machine. Nothing is sent anywhere except to AWS and to the local filesystem; there is no server component beyond the process running locally.
 
-
-
 ## Setup
 
 Requires Node.js 20 or newer, an AWS account with CloudFormation stacks in up to three environments, and AWS credentials already configured locally (for example through `aws configure sso`).
+
+### Option A: Install from npm (recommended)
+
+Create a folder to hold the configuration. This does not need to be named `promoteops` and does not need to contain any source code; it just needs to hold two files, `config.yaml` and `mapper.json`.
+
+```bash
+mkdir promoteops-config
+cd promoteops-config
+npm install promoteops
+```
+
+`npm install` downloads the package into `node_modules/promoteops`, which includes the two example files needed to configure it. Copy them out and rename them:
+
+```bash
+cp node_modules/promoteops/config.example.yaml ./config.yaml
+cp node_modules/promoteops/mapper.example.json ./mapper.json
+```
+
+### Option B: Run from source
 
 ```bash
 git clone https://github.com/Hitesh1326/promoteops.git
@@ -91,7 +102,9 @@ cp config.example.yaml config.yaml
 cp mapper.example.json mapper.json
 ```
 
-Edit `config.yaml` with the AWS region, the AWS profile name for each environment, the path to the local CloudFormation templates, and where the report should be written:
+### Fill in the configuration
+
+Either option produces the same two files to edit. Edit `config.yaml` with the AWS region, the AWS profile name for each environment, the path to the local CloudFormation templates, and where the report should be written:
 
 ```yaml
 aws:
@@ -129,7 +142,7 @@ Both `config.yaml` and `mapper.json` are listed in `.gitignore`, since they cont
 
 ## Connecting PromoteOps to an agent
 
-PromoteOps is published on npm as `[promoteops](https://www.npmjs.com/package/promoteops)`. Add it to the MCP configuration of any MCP-compatible AI coding agent:
+PromoteOps is published on npm as [`promoteops`](https://www.npmjs.com/package/promoteops). Add it to the MCP configuration of any MCP-compatible AI coding agent:
 
 ```json
 {
@@ -137,15 +150,15 @@ PromoteOps is published on npm as `[promoteops](https://www.npmjs.com/package/pr
     "promoteops": {
       "command": "npx",
       "args": ["-y", "promoteops"],
-      "cwd": "/absolute/path/to/promoteops"
+      "cwd": "/absolute/path/to/promoteops-config"
     }
   }
 }
 ```
 
-`cwd` must point at the folder containing `config.yaml` and `mapper.json`, so PromoteOps can find them at startup.
+`cwd` must point at the folder created in Option A above, the one holding `config.yaml` and `mapper.json`. That folder does not need to be a clone of this repository; it can be any directory, since `npx` downloads and runs the published package on its own.
 
-To run from a local clone instead of the published package, point the agent at the built entry file directly:
+For Option B, point the agent at the built entry file directly instead of using `npx`. In this case `cwd` does need to be the cloned repo folder, since that's also where `config.yaml` and `mapper.json` live:
 
 ```json
 {
@@ -169,14 +182,10 @@ After a code or config change and rebuild, restart the MCP connection. Most agen
 4. Review the plan summary, then pass that exact plan ID to `execute_stack_promotion` to run it. Without the plan ID from step 3, `execute_stack_promotion` has nothing to execute and will not run.
 5. PromoteOps checks that the target stack has not changed since the plan was created, then creates and runs the CloudFormation change set, waits for it to finish, and reports whether it succeeded.
 
-
-
 ## Where plans and logs are stored
 
 - Each plan is saved as a JSON file under `~/.promoteops/plans/`, named by its plan ID. It records the template name, the source and target environment, the resolved stack name, the target stack's template hash at the time of planning, the local template contents, and the parameters specified.
 - `~/.promoteops/audit.log` is a plain text file where each line is a JSON record of one event: a plan being created, a confirmation being accepted or declined, a plan being rejected as stale or already executed, or a promotion succeeding or failing.
-
-
 
 ## Development
 
@@ -186,7 +195,6 @@ npm test          # unit test suite, no AWS calls are made
 npm run build     # compiles TypeScript and copies report assets
 npm start         # runs the built server over stdio
 ```
-
 
 | Path                            | Role                                                                                            |
 | ------------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -198,7 +206,6 @@ npm start         # runs the built server over stdio
 | `src/audit/`                    | The local audit log writer                                                                      |
 | `src/mapper/`, `src/config/`    | Parsing and validation for `mapper.json` and `config.yaml`                                      |
 | `src/report/`                   | HTML report rendering                                                                           |
-
 
 Anything that calls AWS, touches the filesystem, or reads the system clock is passed in as a dependency rather than called directly. This is what makes it possible to unit test the promotion logic, mapping resolution, staleness checks, and plan lifecycle, without needing real AWS credentials.
 
