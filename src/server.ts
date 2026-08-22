@@ -6,10 +6,16 @@ import { executeStackPromotion } from "./tools/executeStackPromotion/executeStac
 import { planStackPromotion } from "./tools/planStackPromotion/planStackPromotion.js";
 import { reportStacks } from "./tools/reportStacks/reportStacks.js";
 
+export interface StartServerOptions {
+  /** Folder that holds config.yaml and mapper.json, from --root. */
+  projectRoot?: string;
+}
+
 /**
  * PromoteOps MCP server: report/diff (read-only) plus plan-then-execute stack promotions.
  */
-export async function startServer(): Promise<void> {
+export async function startServer(options: StartServerOptions = {}): Promise<void> {
+  const projectRoot = options.projectRoot;
   const server = new McpServer({
     name: "promoteops",
     version: "0.1.0",
@@ -49,7 +55,7 @@ export async function startServer(): Promise<void> {
       },
     },
     async ({ outputPath }) => {
-      const result = await reportStacks({ outputPath });
+      const result = await reportStacks({ outputPath, projectRoot });
       return {
         content: [{ type: "text" as const, text: result.chatSummary }],
       };
@@ -89,7 +95,7 @@ export async function startServer(): Promise<void> {
       return {
         content: [{
           type: "text" as const,
-          text: await diffStack({ templateName, stackName, fromEnv, toEnv }),
+          text: await diffStack({ templateName, stackName, fromEnv, toEnv, projectRoot }),
         }],
       };
     },
@@ -134,6 +140,7 @@ export async function startServer(): Promise<void> {
         sourceEnv,
         targetEnv,
         parameters,
+        projectRoot,
       });
       return {
         content: [{ type: "text" as const, text: result.chatSummary }],
@@ -161,7 +168,7 @@ export async function startServer(): Promise<void> {
     },
     async ({ planId }) => {
       const result = await executeStackPromotion(
-        { planId },
+        { planId, projectRoot },
         {
           confirm: async () => ({ action: "accept" }),
         },

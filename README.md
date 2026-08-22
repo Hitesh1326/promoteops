@@ -146,31 +146,33 @@ Both `config.yaml` and `mapper.json` are listed in `.gitignore`, since they cont
 
 ## Connecting PromoteOps to an agent
 
-Add PromoteOps to the MCP configuration of any MCP-compatible AI coding agent:
+Add PromoteOps to the MCP configuration of any MCP-compatible AI coding agent. Replace the `--root` placeholder with the absolute path to the folder that holds `config.yaml` and `mapper.json` (the folder created in Option A):
 
 ```json
 {
   "mcpServers": {
     "promoteops": {
       "command": "npx",
-      "args": ["-y", "promoteops"],
-      "cwd": "/absolute/path/to/promoteops-config"
+      "args": ["-y", "promoteops", "--root", "/absolute/path/to/promoteops-config"]
     }
   }
 }
 ```
 
-`cwd` must point at the folder created in Option A above, the one holding `config.yaml` and `mapper.json`. That folder does not need to be a clone of this repository; it can be any directory, since `npx` downloads and runs the published package on its own.
+That folder does not need to be a clone of this repository; it can be any directory, since `npx` downloads and runs the published package on its own.
 
-For Option B, point the agent at the built entry file directly instead of using `npx`. In this case `cwd` does need to be the cloned repo folder, since that's also where `config.yaml` and `mapper.json` live:
+For Option B, point the agent at the built entry file directly instead of using `npx`, and pass `--root` as the cloned repo folder (where `config.yaml` and `mapper.json` live):
 
 ```json
 {
   "mcpServers": {
     "promoteops": {
       "command": "node",
-      "args": ["/absolute/path/to/promoteops/dist/index.js"],
-      "cwd": "/absolute/path/to/promoteops"
+      "args": [
+        "/absolute/path/to/promoteops/dist/index.js",
+        "--root",
+        "/absolute/path/to/promoteops"
+      ]
     }
   }
 }
@@ -202,7 +204,7 @@ npm start         # runs the built server over stdio
 
 | Path                            | Role                                                                                            |
 | ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `src/index.ts`, `src/server.ts` | Entry point; registers the five MCP tools and their input schemas                               |
+| `src/index.ts`, `src/server.ts` | Entry point; parses `--root` and registers the five MCP tools and their input schemas          |
 | `src/tools/`                    | One folder per tool: `reportStacks`, `diffStack`, `planStackPromotion`, `executeStackPromotion` |
 | `src/stacks/`                   | Stack comparison, template diffing, and mapper-to-stack resolution logic                        |
 | `src/aws/`                      | AWS client construction, stack inspection, and CloudFormation change set handling               |
