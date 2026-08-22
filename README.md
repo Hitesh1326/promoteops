@@ -14,7 +14,7 @@ PromoteOps is a Model Context Protocol (MCP) server that runs locally and connec
 
 PromoteOps reads a small configuration file that maps each CloudFormation template to its stack name in each environment, then uses that mapping to generate a report like the one below, where every stack is currently in sync:
 
-![Report showing all stacks in sync](./assets/report-current.png)
+![Report showing all stacks in sync](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/report-current.png)
 
 ## What PromoteOps actually does
 
@@ -42,11 +42,11 @@ PromoteOps reads a small configuration file that maps each CloudFormation templa
 
 Each row in the report is flagged when it needs attention:
 
-![Report showing test outdated compared to dev](./assets/report-outdated.png)
+![Report showing test outdated compared to dev](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/report-outdated.png)
 
 Opening a flagged row shows the exact diff between what's deployed and what would be promoted:
 
-![Diff view between dev and test](./assets/diff-drawer.png)
+![Diff view between dev and test](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/diff-drawer.png)
 
 ## How the two flows work
 
@@ -54,13 +54,13 @@ PromoteOps separates reading from writing. Generating a report or a diff never c
 
 ### Reading drift: `report_stacks` and `diff_stack`
 
-![Reading drift flow: mapper.json into Compare stacks, into Development / Test / Production AWS accounts, into a comparison report, which feeds report_stacks and diff_stack](./assets/reading-drift-flow.png)
+![Reading drift flow: mapper.json into Compare stacks, into Development / Test / Production AWS accounts, into a comparison report, which feeds report_stacks and diff_stack](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/reading-drift-flow.png)
 
 `report_stacks` reads the live template for every mapped stack in each environment and produces an HTML report plus a summary of what has drifted. `diff_stack` uses the same comparison data to show the exact diff for one stack.
 
 ### Promoting a stack: `plan_stack_promotion` then `execute_stack_promotion`
 
-![Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log](./assets/promoting-stack-flow.png)
+![Promoting a stack flow: plan_stack_promotion resolves the stack, reads the local template, records the target hash, and returns a plan ID; after review, execute_stack_promotion checks whether the plan was already executed, requests confirmation, checks whether the target stack changed, then either rejects the plan or applies the change set and records the result in the audit log](https://raw.githubusercontent.com/Hitesh1326/promoteops/main/assets/promoting-stack-flow.png)
 
 The check against the target stack's hash, right before applying anything, is what makes the plan trustworthy. If another deployment changed the target stack after the plan was created, the plan is discarded instead of being applied against infrastructure that no longer matches what was reviewed.
 
