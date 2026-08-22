@@ -4,17 +4,18 @@
   "description": "MCP server for CloudFormation drift reporting and plan-then-execute promotions",
   "type": "module",
   "bin": {
-    "promoteops": "./dist/index.js"
+    "promoteops": "dist/index.js"
   },
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
     "config.example.yaml",
     "mapper.example.json"
   ],
   "scripts": {
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
-    "build": "npm run clean --silent && tsc && node dist/scripts/copyReportAssets.js",
+    "build": "npm run clean --silent && tsc && node dist/scripts/copyReportAssets.js && chmod +x dist/index.js",
     "test": "vitest run",
     "start": "node dist/index.js",
     "prepare": "npm run build"
@@ -26,9 +27,20 @@
     "mcp",
     "cloudformation",
     "aws",
-    "promotion"
+    "promotion",
+    "cursor",
+    "model-context-protocol"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hitesh1326/promoteops.git"
+  },
+  "homepage": "https://github.com/Hitesh1326/promoteops#readme",
+  "bugs": {
+    "url": "https://github.com/Hitesh1326/promoteops/issues"
+  },
+  "author": "Hitesh Shinde",
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.1085.0",
     "@aws-sdk/credential-providers": "^3.1081.0",
